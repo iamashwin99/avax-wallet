@@ -1493,10 +1493,10 @@
     "postcss" "^7.0.32"
     "postcss-value-parser" "^4.1.0"
 
-"avalanche@^2.5.3":
-  "integrity" "sha512-6s4wvrveQIavEJgz1Xskhv5xV0ZuYTtMeaNJbkB87o9DnHrpp84xehx/rnWJai0dT0NyPjKRoH9xA5APlZ0MiQ=="
-  "resolved" "https://registry.npmjs.org/avalanche/-/avalanche-2.5.3.tgz"
-  "version" "2.5.3"
+"avalanche@3.1.0":
+  "integrity" "sha512-WgGWBOfqCWAaBuTeiMbpmNk2Gn6EoI2oWreRSJQT5DfUcwh+YvVxpXr/IXP56l9mp2LH99G3myoz4yt0R5VxvA=="
+  "resolved" "https://registry.npmjs.org/avalanche/-/avalanche-3.1.0.tgz"
+  "version" "3.1.0"
   dependencies:
     "axios" "0.19.2"
     "bech32" "1.1.4"
@@ -1504,6 +1504,7 @@
     "buffer" "5.5.0"
     "create-hash" "1.2.0"
     "elliptic" "6.5.3"
+    "node-forge" "^0.10.0"
     "secp256k1" "4.0.2"
     "store2" "2.11.0"
     "web3-utils" "1.2.11"

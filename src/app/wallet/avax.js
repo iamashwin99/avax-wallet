@@ -3,7 +3,7 @@ import { Avalanche, BinTools } from 'avalanche'
 const BIN_TOOLS = BinTools.getInstance()
 const AVA_EXPLORER_ROOT = 'https://explorer.avax.network'
 
-export default new Avalanche('testapi.avax.network', 443, 'https')
+export default new Avalanche('api.avax.network', 443, 'https')
 
 export function explorerTxPage (txid) {
   return `${AVA_EXPLORER_ROOT}/tx/${txid}`
