@@ -8,7 +8,7 @@
     "start": "webpack-dev-server",
     "build": "webpack-cli",
     "build:watch": "webpack-cli -w",
-    "predeploy": "NODE_ENV="production" yarn build",
+    "predeploy": "yarn build",
     "deploy": "gh-pages -d build"
   },
   "standard": {
