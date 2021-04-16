@@ -3,10 +3,13 @@
   "version": "0.1.0",
   "main": "src/index.js",
   "license": "MIT",
+  "homepage": "https://iamashwin99.github.io/avax-wallet",
   "scripts": {
     "start": "webpack-dev-server",
     "build": "webpack-cli",
-    "build:watch": "webpack-cli -w"
+    "build:watch": "webpack-cli -w",
+    "predeploy": "NODE_ENV="production" yarn build",
+    "deploy": "gh-pages -d build"
   },
   "standard": {
     "parser": "babel-eslint",
