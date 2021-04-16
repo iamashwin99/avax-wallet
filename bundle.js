@@ -605,6 +605,7 @@ class AVMAPI extends jrpcapi_1.JRPCAPI {
    *
    * @param core A reference to the Avalanche class
    * @param baseurl Defaults to the string "/ext/bc/X" as the path to blockchain's baseurl
+   * @param blockchainID The Blockchain's ID. Defaults to an empty string: ''
    */
   constructor(core, baseurl = '/ext/bc/X', blockchainID = '') {
     super(core, baseurl);
@@ -614,40 +615,60 @@ class AVMAPI extends jrpcapi_1.JRPCAPI {
 
     this.keychain = new keychain_1.KeyChain('', '');
     this.blockchainID = '';
+    this.blockchainAlias = undefined;
     this.AVAXAssetID = undefined;
-    this.fee = undefined;
+    this.txFee = undefined;
+    this.creationTxFee = undefined;
     /**
-       * Gets the alias for the blockchainID if it exists, otherwise returns `undefined`.
-       *
-       * @returns The alias for the blockchainID
-       */
+     * Gets the alias for the blockchainID if it exists, otherwise returns `undefined`.
+     *
+     * @returns The alias for the blockchainID
+     */
 
     this.getBlockchainAlias = () => {
-      const netid = this.core.getNetworkID();
+      if (typeof this.blockchainAlias === "undefined") {
+        const netid = this.core.getNetworkID();
 
-      if (netid in constants_2.Defaults.network && this.blockchainID in constants_2.Defaults.network[netid]) {
-        return constants_2.Defaults.network[netid][this.blockchainID].alias;
+        if (netid in constants_2.Defaults.network && this.blockchainID in constants_2.Defaults.network[netid]) {
+          this.blockchainAlias = constants_2.Defaults.network[netid][this.blockchainID].alias;
+          return this.blockchainAlias;
+        } else {
+          /* istanbul ignore next */
+          return undefined;
+        }
       }
-      /* istanbul ignore next */
 
+      return this.blockchainAlias;
+    };
+    /**
+     * Sets the alias for the blockchainID.
+     *
+     * @param alias The alias for the blockchainID.
+     *
+     */
+
+
+    this.setBlockchainAlias = alias => {
+      this.blockchainAlias = alias;
+      /* istanbul ignore next */
 
       return undefined;
     };
     /**
-       * Gets the blockchainID and returns it.
-       *
-       * @returns The blockchainID
-       */
+     * Gets the blockchainID and returns it.
+     *
+     * @returns The blockchainID
+     */
 
 
     this.getBlockchainID = () => this.blockchainID;
     /**
-       * Refresh blockchainID, and if a blockchainID is passed in, use that.
-       *
-       * @param Optional. BlockchainID to assign, if none, uses the default based on networkID.
-       *
-       * @returns The blockchainID
-       */
+     * Refresh blockchainID, and if a blockchainID is passed in, use that.
+     *
+     * @param Optional. BlockchainID to assign, if none, uses the default based on networkID.
+     *
+     * @returns The blockchainID
+     */
 
 
     this.refreshBlockchainID = (blockchainID = undefined) => {
@@ -667,10 +688,10 @@ class AVMAPI extends jrpcapi_1.JRPCAPI {
       return false;
     };
     /**
-       * Takes an address string and returns its {@link https://github.com/feross/buffer|Buffer} representation if valid.
-       *
-       * @returns A {@link https://github.com/feross/buffer|Buffer} for the address if valid, undefined if not valid.
-       */
+     * Takes an address string and returns its {@link https://github.com/feross/buffer|Buffer} representation if valid.
+     *
+     * @returns A {@link https://github.com/feross/buffer|Buffer} for the address if valid, undefined if not valid.
+     */
 
 
     this.parseAddress = addr => {
@@ -686,12 +707,14 @@ class AVMAPI extends jrpcapi_1.JRPCAPI {
     /**
      * Fetches the AVAX AssetID and returns it in a Promise.
      *
+     * @param refresh This function caches the response. Refresh = true will bust the cache.
+     *
      * @returns The the provided string representing the AVAX AssetID
      */
 
 
-    this.getAVAXAssetID = () => __awaiter(this, void 0, void 0, function* () {
-      if (typeof this.AVAXAssetID === 'undefined') {
+    this.getAVAXAssetID = (refresh = false) => __awaiter(this, void 0, void 0, function* () {
+      if (typeof this.AVAXAssetID === 'undefined' || refresh) {
         const asset = yield this.getAssetDescription(constants_2.PrimaryAssetAlias);
         this.AVAXAssetID = asset.assetID;
       }
@@ -699,38 +722,88 @@ class AVMAPI extends jrpcapi_1.JRPCAPI {
       return this.AVAXAssetID;
     });
     /**
-     * Gets the default fee for this chain.
+     * Overrides the defaults and sets the cache to a specific AVAX AssetID
      *
-     * @returns The default fee as a {@link https://github.com/indutny/bn.js/|BN}
+     * @param avaxAssetID A cb58 string or Buffer representing the AVAX AssetID
+     *
+     * @returns The the provided string representing the AVAX AssetID
      */
 
 
-    this.getDefaultFee = () => {
-      return this.core.getNetworkID() in constants_2.Defaults.network ? new bn_js_1.default(constants_2.Defaults.network[this.core.getNetworkID()]["X"]["fee"]) : new bn_js_1.default(0);
-    };
-    /**
-     * Gets the fee for this chain.
-     *
-     * @returns The fee as a {@link https://github.com/indutny/bn.js/|BN}
-     */
-
-
-    this.getFee = () => {
-      if (typeof this.fee === "undefined") {
-        this.fee = this.getDefaultFee();
+    this.setAVAXAssetID = avaxAssetID => {
+      if (typeof avaxAssetID === "string") {
+        avaxAssetID = bintools.cb58Decode(avaxAssetID);
       }
 
-      return this.fee;
+      this.AVAXAssetID = avaxAssetID;
     };
     /**
-     * Sets the fee for this chain.
+     * Gets the default tx fee for this chain.
      *
-     * @param fee The fee amount to set as {@link https://github.com/indutny/bn.js/|BN}
+     * @returns The default tx fee as a {@link https://github.com/indutny/bn.js/|BN}
      */
 
 
-    this.setFee = fee => {
-      this.fee = fee;
+    this.getDefaultTxFee = () => {
+      return this.core.getNetworkID() in constants_2.Defaults.network ? new bn_js_1.default(constants_2.Defaults.network[this.core.getNetworkID()]["X"]["txFee"]) : new bn_js_1.default(0);
+    };
+    /**
+     * Gets the tx fee for this chain.
+     *
+     * @returns The tx fee as a {@link https://github.com/indutny/bn.js/|BN}
+     */
+
+
+    this.getTxFee = () => {
+      if (typeof this.txFee === "undefined") {
+        this.txFee = this.getDefaultTxFee();
+      }
+
+      return this.txFee;
+    };
+    /**
+     * Sets the tx fee for this chain.
+     *
+     * @param fee The tx fee amount to set as {@link https://github.com/indutny/bn.js/|BN}
+     */
+
+
+    this.setTxFee = fee => {
+      this.txFee = fee;
+    };
+    /**
+     * Gets the default creation fee for this chain.
+     *
+     * @returns The default creation fee as a {@link https://github.com/indutny/bn.js/|BN}
+     */
+
+
+    this.getDefaultCreationTxFee = () => {
+      return this.core.getNetworkID() in constants_2.Defaults.network ? new bn_js_1.default(constants_2.Defaults.network[this.core.getNetworkID()]["X"]["creationTxFee"]) : new bn_js_1.default(0);
+    };
+    /**
+     * Gets the creation fee for this chain.
+     *
+     * @returns The creation fee as a {@link https://github.com/indutny/bn.js/|BN}
+     */
+
+
+    this.getCreationTxFee = () => {
+      if (typeof this.creationTxFee === "undefined") {
+        this.creationTxFee = this.getDefaultCreationTxFee();
+      }
+
+      return this.creationTxFee;
+    };
+    /**
+     * Sets the creation fee for this chain.
+     *
+     * @param fee The creation fee amount to set as {@link https://github.com/indutny/bn.js/|BN}
+     */
+
+
+    this.setCreationTxFee = fee => {
+      this.creationTxFee = fee;
     };
     /**
      * Gets a reference to the keychain for this class.
@@ -769,9 +842,9 @@ class AVMAPI extends jrpcapi_1.JRPCAPI {
      */
 
 
-    this.checkGooseEgg = utx => __awaiter(this, void 0, void 0, function* () {
+    this.checkGooseEgg = (utx, outTotal = new bn_js_1.default(0)) => __awaiter(this, void 0, void 0, function* () {
       const avaxAssetID = yield this.getAVAXAssetID();
-      let outputTotal = utx.getOutputTotal(avaxAssetID);
+      let outputTotal = outTotal.gt(new bn_js_1.default(0)) ? outTotal : utx.getOutputTotal(avaxAssetID);
       const fee = utx.getBurn(avaxAssetID);
 
       if (fee.lte(constants_2.ONEAVAX.mul(new bn_js_1.default(10))) || fee.lte(outputTotal)) {
@@ -985,13 +1058,38 @@ class AVMAPI extends jrpcapi_1.JRPCAPI {
       return this.callMethod('avm.importKey', params).then(response => response.data.result.address);
     });
     /**
-       * Send AVAX from the X-Chain to an account on the P-Chain.
+      * Send ANT (Avalanche Native Token) assets including AVAX from the X-Chain to an account on the P-Chain or C-Chain.
+      *
+      * After calling this method, you must call the P-Chain's `importAVAX` or the C-Chain’s `import` method to complete the transfer.
+      *
+      * @param username The Keystore user that controls the P-Chain or C-Chain account specified in `to`
+      * @param password The password of the Keystore user
+      * @param to The account on the P-Chain or C-Chain to send the asset to.
+      * @param amount Amount of asset to export as a {@link https://github.com/indutny/bn.js/|BN}
+      * @param assetID The asset id which is being sent
+      *
+      * @returns String representing the transaction id
+      */
+
+
+    this.export = (username, password, to, amount, assetID) => __awaiter(this, void 0, void 0, function* () {
+      const params = {
+        to,
+        amount: amount.toString(10),
+        username,
+        password,
+        assetID
+      };
+      return this.callMethod('avm.export', params).then(response => response.data.result.txID);
+    });
+    /**
+       * Send AVAX from the X-Chain to an account on the P-Chain or C-Chain.
        *
-       * After calling this method, you must call the P-Chain’s importAVAX method to complete the transfer.
+       * After calling this method, you must call the P-Chain’s or C-Chain's importAVAX method to complete the transfer.
        *
        * @param username The Keystore user that controls the P-Chain account specified in `to`
        * @param password The password of the Keystore user
-       * @param to The account on the P-Chain to send the AVAX to. Do not include P- in the address
+       * @param to The account on the P-Chain or C-Chain to send the AVAX to.
        * @param amount Amount of AVAX to export as a {@link https://github.com/indutny/bn.js/|BN}
        *
        * @returns String representing the transaction id
@@ -1006,6 +1104,30 @@ class AVMAPI extends jrpcapi_1.JRPCAPI {
         password
       };
       return this.callMethod('avm.exportAVAX', params).then(response => response.data.result.txID);
+    });
+    /**
+     * Send ANT (Avalanche Native Token) assets including AVAX from an account on the P-Chain or C-Chain to an address on the X-Chain. This transaction
+     * must be signed with the key of the account that the asset is sent from and which pays
+     * the transaction fee.
+     *
+     * @param username The Keystore user that controls the account specified in `to`
+     * @param password The password of the Keystore user
+     * @param to The address of the account the asset is sent to.
+     * @param sourceChain The chainID where the funds are coming from. Ex: "C"
+     *
+     * @returns Promise for a string for the transaction, which should be sent to the network
+     * by calling issueTx.
+     */
+
+
+    this.import = (username, password, to, sourceChain) => __awaiter(this, void 0, void 0, function* () {
+      const params = {
+        to,
+        sourceChain,
+        username,
+        password
+      };
+      return this.callMethod('avm.import', params).then(response => response.data.result.txID);
     });
     /**
        * Finalize a transfer of AVAX from the P-Chain to the X-Chain.
@@ -1133,8 +1255,6 @@ class AVMAPI extends jrpcapi_1.JRPCAPI {
      * @param startIndex Optional. [StartIndex] defines where to start fetching UTXOs (for pagination.)
      * UTXOs fetched are from addresses equal to or greater than [StartIndex.Address]
      * For address [StartIndex.Address], only UTXOs with IDs greater than [StartIndex.Utxo] will be returned.
-     * @param assetID An assetID to filter on the recieved UTXOs
-     * @param typeID A number of the typeID to filter on the recieved UTXOs
      * @param persistOpts Options available to persist these UTXOs in local storage
      *
      * @remarks
@@ -1153,7 +1273,7 @@ class AVMAPI extends jrpcapi_1.JRPCAPI {
         limit
       };
 
-      if (typeof startIndex !== "undefined") {
+      if (typeof startIndex !== "undefined" && startIndex) {
         params.startIndex = startIndex;
       }
 
@@ -1182,7 +1302,8 @@ class AVMAPI extends jrpcapi_1.JRPCAPI {
         }
 
         utxos.addArray(data, false);
-        return utxos;
+        response.data.result.utxos = utxos;
+        return response.data.result;
       });
     });
     /**
@@ -1195,7 +1316,7 @@ class AVMAPI extends jrpcapi_1.JRPCAPI {
      * @param toAddresses The addresses to send the funds
      * @param fromAddresses The addresses being used to send the funds from the UTXOs provided
      * @param changeAddresses The addresses that can spend the change remaining from the spent UTXOs
-     * @param memo Optional contains arbitrary bytes, up to 256 bytes
+     * @param memo Optional CB58 Buffer or String which contains arbitrary bytes, up to 256 bytes
      * @param asOf Optional. The timestamp to verify the transaction against as a {@link https://github.com/indutny/bn.js/|BN}
      * @param locktime Optional. The locktime field created in the resulting outputs
      * @param threshold Optional. The number of signatures required to spend the funds in the resultant UTXO
@@ -1222,7 +1343,7 @@ class AVMAPI extends jrpcapi_1.JRPCAPI {
         memo = memo.getPayload();
       }
 
-      const builtUnsignedTx = utxoset.buildBaseTx(this.core.getNetworkID(), bintools.cb58Decode(this.blockchainID), amount, assetID, to, from, change, this.getFee(), yield this.getAVAXAssetID(), memo, asOf, locktime, threshold);
+      const builtUnsignedTx = utxoset.buildBaseTx(this.core.getNetworkID(), bintools.cb58Decode(this.blockchainID), amount, assetID, to, from, change, this.getTxFee(), yield this.getAVAXAssetID(), memo, asOf, locktime, threshold);
 
       if (!(yield this.checkGooseEgg(builtUnsignedTx))) {
         /* istanbul ignore next */
@@ -1240,7 +1361,7 @@ class AVMAPI extends jrpcapi_1.JRPCAPI {
      * @param fromAddresses The addresses being used to send the NFT from the utxoID provided
      * @param changeAddresses The addresses that can spend the change remaining from the spent UTXOs
      * @param utxoid A base58 utxoID or an array of base58 utxoIDs for the nfts this transaction is sending
-     * @param memo Optional contains arbitrary bytes, up to 256 bytes
+     * @param memo Optional CB58 Buffer or String which contains arbitrary bytes, up to 256 bytes
      * @param asOf Optional. The timestamp to verify the transaction against as a {@link https://github.com/indutny/bn.js/|BN}
      * @param locktime Optional. The locktime field created in the resulting outputs
      * @param threshold Optional. The number of signatures required to spend the funds in the resultant UTXO
@@ -1272,7 +1393,7 @@ class AVMAPI extends jrpcapi_1.JRPCAPI {
         utxoidArray = utxoid;
       }
 
-      const builtUnsignedTx = utxoset.buildNFTTransferTx(this.core.getNetworkID(), bintools.cb58Decode(this.blockchainID), to, from, change, utxoidArray, this.getFee(), avaxAssetID, memo, asOf, locktime, threshold);
+      const builtUnsignedTx = utxoset.buildNFTTransferTx(this.core.getNetworkID(), bintools.cb58Decode(this.blockchainID), to, from, change, utxoidArray, this.getTxFee(), avaxAssetID, memo, asOf, locktime, threshold);
 
       if (!(yield this.checkGooseEgg(builtUnsignedTx))) {
         /* istanbul ignore next */
@@ -1291,7 +1412,7 @@ class AVMAPI extends jrpcapi_1.JRPCAPI {
      * @param toAddresses The addresses to send the funds
      * @param fromAddresses The addresses being used to send the funds from the UTXOs provided
      * @param changeAddresses The addresses that can spend the change remaining from the spent UTXOs
-     * @param memo Optional contains arbitrary bytes, up to 256 bytes
+     * @param memo Optional CB58 Buffer or String which contains arbitrary bytes, up to 256 bytes
      * @param asOf Optional. The timestamp to verify the transaction against as a {@link https://github.com/indutny/bn.js/|BN}
      * @param locktime Optional. The locktime field created in the resulting outputs
      * @param threshold Optional. The number of signatures required to spend the funds in the resultant UTXO
@@ -1322,15 +1443,19 @@ class AVMAPI extends jrpcapi_1.JRPCAPI {
         throw new Error("Error - AVMAPI.buildImportTx: Invalid destinationChain type: " + typeof sourceChain);
       }
 
-      const atomicUTXOs = yield this.getUTXOs(ownerAddresses, srcChain, 0, undefined);
+      const atomicUTXOs = yield (yield this.getUTXOs(ownerAddresses, srcChain, 0, undefined)).utxos;
       const avaxAssetID = yield this.getAVAXAssetID();
       const atomics = atomicUTXOs.getAllUTXOs();
+
+      if (atomics.length === 0) {
+        throw new Error("Error - AVMAPI.buildImportTx: No atomic UTXOs to import from " + srcChain + " using addresses: " + ownerAddresses.join(", "));
+      }
 
       if (memo instanceof payload_1.PayloadBase) {
         memo = memo.getPayload();
       }
 
-      const builtUnsignedTx = utxoset.buildImportTx(this.core.getNetworkID(), bintools.cb58Decode(this.blockchainID), to, from, change, atomics, sourceChain, this.getFee(), avaxAssetID, memo, asOf, locktime, threshold);
+      const builtUnsignedTx = utxoset.buildImportTx(this.core.getNetworkID(), bintools.cb58Decode(this.blockchainID), to, from, change, atomics, sourceChain, this.getTxFee(), avaxAssetID, memo, asOf, locktime, threshold);
 
       if (!(yield this.checkGooseEgg(builtUnsignedTx))) {
         /* istanbul ignore next */
@@ -1349,7 +1474,7 @@ class AVMAPI extends jrpcapi_1.JRPCAPI {
      * @param toAddresses The addresses to send the funds
      * @param fromAddresses The addresses being used to send the funds from the UTXOs provided
      * @param changeAddresses The addresses that can spend the change remaining from the spent UTXOs
-     * @param memo Optional contains arbitrary bytes, up to 256 bytes
+     * @param memo Optional CB58 Buffer or String which contains arbitrary bytes, up to 256 bytes
      * @param asOf Optional. The timestamp to verify the transaction against as a {@link https://github.com/indutny/bn.js/|BN}
      * @param locktime Optional. The locktime field created in the resulting outputs
      * @param threshold Optional. The number of signatures required to spend the funds in the resultant UTXO
@@ -1380,10 +1505,6 @@ class AVMAPI extends jrpcapi_1.JRPCAPI {
         throw new Error("Error - AVMAPI.buildExportTx: Destination ChainID must be 32 bytes in length.");
       }
 
-      if (bintools.cb58Encode(destinationChain) !== constants_2.PlatformChainID) {
-        throw new Error("Error - AVMAPI.buildExportTx: Destination ChainID must PlatformChainID in the current version of AvalancheJS.");
-      }
-
       let to = [];
       toAddresses.map(a => {
         to.push(bintools.stringToAddress(a));
@@ -1398,7 +1519,7 @@ class AVMAPI extends jrpcapi_1.JRPCAPI {
       }
 
       const avaxAssetID = yield this.getAVAXAssetID();
-      const builtUnsignedTx = utxoset.buildExportTx(this.core.getNetworkID(), bintools.cb58Decode(this.blockchainID), amount, avaxAssetID, to, from, change, destinationChain, this.getFee(), avaxAssetID, memo, asOf, locktime, threshold);
+      const builtUnsignedTx = utxoset.buildExportTx(this.core.getNetworkID(), bintools.cb58Decode(this.blockchainID), amount, avaxAssetID, to, from, change, destinationChain, this.getTxFee(), avaxAssetID, memo, asOf, locktime, threshold);
 
       if (!(yield this.checkGooseEgg(builtUnsignedTx))) {
         /* istanbul ignore next */
@@ -1419,7 +1540,7 @@ class AVMAPI extends jrpcapi_1.JRPCAPI {
      * @param symbol String for the ticker symbol of the asset
      * @param denomination Number for the denomination which is 10^D. D must be >= 0 and <= 32. Ex: $1 AVAX = 10^9 $nAVAX
      * @param mintOutputs Optional. Array of [[SECPMintOutput]]s to be included in the transaction. These outputs can be spent to mint more tokens.
-     * @param memo Optional. Contains arbitrary bytes, up to 256 bytes
+     * @param memo Optional CB58 Buffer or String which contains arbitrary bytes, up to 256 bytes
      * @param asOf Optional. The timestamp to verify the transaction against as a {@link https://github.com/indutny/bn.js/|BN}
      *
      * @returns An unsigned transaction ([[UnsignedTx]]) which contains a [[CreateAssetTx]].
@@ -1451,9 +1572,9 @@ class AVMAPI extends jrpcapi_1.JRPCAPI {
       }
 
       const avaxAssetID = yield this.getAVAXAssetID();
-      const builtUnsignedTx = utxoset.buildCreateAssetTx(this.core.getNetworkID(), bintools.cb58Decode(this.blockchainID), from, change, initialStates, name, symbol, denomination, mintOutputs, this.getFee(), avaxAssetID, memo, asOf);
+      const builtUnsignedTx = utxoset.buildCreateAssetTx(this.core.getNetworkID(), bintools.cb58Decode(this.blockchainID), from, change, initialStates, name, symbol, denomination, mintOutputs, this.getCreationTxFee(), avaxAssetID, memo, asOf);
 
-      if (!(yield this.checkGooseEgg(builtUnsignedTx))) {
+      if (!(yield this.checkGooseEgg(builtUnsignedTx, this.getCreationTxFee()))) {
         /* istanbul ignore next */
         throw new Error("Failed Goose Egg Check");
       }
@@ -1461,7 +1582,7 @@ class AVMAPI extends jrpcapi_1.JRPCAPI {
       return builtUnsignedTx;
     });
 
-    this.buildSECPMintTx = (utxoset, mintOwner, transferOwners, fromAddresses, changeAddresses, mintUTXOID, memo = undefined, asOf = helperfunctions_1.UnixNow()) => __awaiter(this, void 0, void 0, function* () {
+    this.buildSECPMintTx = (utxoset, mintOwner, transferOwner, fromAddresses, changeAddresses, mintUTXOID, memo = undefined, asOf = helperfunctions_1.UnixNow()) => __awaiter(this, void 0, void 0, function* () {
       let from = this._cleanAddressArray(fromAddresses, "buildSECPMintTx").map(a => bintools.stringToAddress(a));
 
       let change = this._cleanAddressArray(changeAddresses, "buildSECPMintTx").map(a => bintools.stringToAddress(a));
@@ -1471,7 +1592,7 @@ class AVMAPI extends jrpcapi_1.JRPCAPI {
       }
 
       let avaxAssetID = yield this.getAVAXAssetID();
-      const builtUnsignedTx = utxoset.buildSECPMintTx(this.core.getNetworkID(), bintools.cb58Decode(this.blockchainID), mintOwner, transferOwners, from, change, mintUTXOID, this.getFee(), avaxAssetID, memo, asOf);
+      const builtUnsignedTx = utxoset.buildSECPMintTx(this.core.getNetworkID(), bintools.cb58Decode(this.blockchainID), mintOwner, transferOwner, from, change, mintUTXOID, this.getTxFee(), avaxAssetID, memo, asOf);
 
       if (!(yield this.checkGooseEgg(builtUnsignedTx))) {
         /* istanbul ignore next */
@@ -1490,7 +1611,7 @@ class AVMAPI extends jrpcapi_1.JRPCAPI {
     * @param minterSets is a list where each element specifies that threshold of the addresses in minters may together mint more of the asset by signing a minting transaction
     * @param name String for the descriptive name of the asset
     * @param symbol String for the ticker symbol of the asset
-    * @param memo Optional contains arbitrary bytes, up to 256 bytes
+    * @param memo Optional CB58 Buffer or String which contains arbitrary bytes, up to 256 bytes
     * @param asOf Optional. The timestamp to verify the transaction against as a {@link https://github.com/indutny/bn.js/|BN}
     * @param locktime Optional. The locktime field created in the resulting mint output
     *
@@ -1539,9 +1660,9 @@ class AVMAPI extends jrpcapi_1.JRPCAPI {
       }
 
       let avaxAssetID = yield this.getAVAXAssetID();
-      const builtUnsignedTx = utxoset.buildCreateNFTAssetTx(this.core.getNetworkID(), bintools.cb58Decode(this.blockchainID), from, change, minterSets, name, symbol, this.getFee(), avaxAssetID, memo, asOf, locktime);
+      const builtUnsignedTx = utxoset.buildCreateNFTAssetTx(this.core.getNetworkID(), bintools.cb58Decode(this.blockchainID), from, change, minterSets, name, symbol, this.getCreationTxFee(), avaxAssetID, memo, asOf, locktime);
 
-      if (!(yield this.checkGooseEgg(builtUnsignedTx))) {
+      if (!(yield this.checkGooseEgg(builtUnsignedTx, this.getCreationTxFee()))) {
         /* istanbul ignore next */
         throw new Error("Failed Goose Egg Check");
       }
@@ -1559,7 +1680,7 @@ class AVMAPI extends jrpcapi_1.JRPCAPI {
     * @param utxoid A base58 utxoID or an array of base58 utxoIDs for the nft mint output this transaction is sending
     * @param groupID Optional. The group this NFT is issued to.
     * @param payload Optional. Data for NFT Payload as either a [[PayloadBase]] or a {@link https://github.com/feross/buffer|Buffer}
-    * @param memo Optional contains arbitrary bytes, up to 256 bytes
+    * @param memo Optional CB58 Buffer or String which contains arbitrary bytes, up to 256 bytes
     * @param asOf Optional. The timestamp to verify the transaction against as a {@link https://github.com/indutny/bn.js/|BN}
     *
     * @returns An unsigned transaction ([[UnsignedTx]]) which contains an [[OperationTx]].
@@ -1590,7 +1711,7 @@ class AVMAPI extends jrpcapi_1.JRPCAPI {
         owners = [owners];
       }
 
-      const builtUnsignedTx = utxoset.buildCreateNFTMintTx(this.core.getNetworkID(), bintools.cb58Decode(this.blockchainID), owners, from, change, utxoid, groupID, payload, this.getFee(), avaxAssetID, memo, asOf);
+      const builtUnsignedTx = utxoset.buildCreateNFTMintTx(this.core.getNetworkID(), bintools.cb58Decode(this.blockchainID), owners, from, change, utxoid, groupID, payload, this.getTxFee(), avaxAssetID, memo, asOf);
 
       if (!(yield this.checkGooseEgg(builtUnsignedTx))) {
         /* istanbul ignore next */
@@ -1647,22 +1768,22 @@ class AVMAPI extends jrpcapi_1.JRPCAPI {
      * @param assetID The assetID of the asset to send
      * @param amount The amount of the asset to be sent
      * @param to The address of the recipient
-     * @param from An array of addresses managed by the node's keystore for this blockchain which will fund this transaction
+     * @param from Optional. An array of addresses managed by the node's keystore for this blockchain which will fund this transaction
+     * @param changeAddr Optional. An address to send the change
+     * @param memo Optional. CB58 Buffer or String which contains arbitrary bytes, up to 256 bytes
      *
      * @returns Promise for the string representing the transaction's ID.
      */
 
 
-    this.send = (username, password, assetID, amount, to, from) => __awaiter(this, void 0, void 0, function* () {
+    this.send = (username, password, assetID, amount, to, from = undefined, changeAddr = undefined, memo = undefined) => __awaiter(this, void 0, void 0, function* () {
       let asset;
       let amnt;
 
       if (typeof this.parseAddress(to) === 'undefined') {
         /* istanbul ignore next */
-        throw new Error(`Error - AVMAPI.sen: Invalid address format ${to}`);
+        throw new Error(`Error - AVMAPI.send: Invalid address format ${to}`);
       }
-
-      from = this._cleanAddressArray(from, 'send');
 
       if (typeof assetID !== 'string') {
         asset = bintools.cb58Encode(assetID);
@@ -1677,14 +1798,108 @@ class AVMAPI extends jrpcapi_1.JRPCAPI {
       }
 
       const params = {
-        username,
-        password,
+        username: username,
+        password: password,
         assetID: asset,
         amount: amnt.toString(10),
-        to,
-        from
+        to: to
       };
-      return this.callMethod('avm.send', params).then(response => response.data.result.txID);
+      from = this._cleanAddressArray(from, 'send');
+
+      if (typeof from !== "undefined") {
+        params["from"] = from;
+      }
+
+      if (typeof changeAddr !== 'undefined') {
+        if (typeof this.parseAddress(changeAddr) === 'undefined') {
+          /* istanbul ignore next */
+          throw new Error(`Error - AVMAPI.send: Invalid address format ${changeAddr}`);
+        }
+
+        params["changeAddr"] = changeAddr;
+      }
+
+      if (typeof memo !== "undefined") {
+        if (typeof memo !== 'string') {
+          params["memo"] = bintools.cb58Encode(memo);
+        } else {
+          params["memo"] = memo;
+        }
+      }
+
+      return this.callMethod('avm.send', params).then(response => response.data.result);
+    });
+    /**
+     * Sends an amount of assetID to an array of specified addresses from a list of owned of addresses.
+     *
+     * @param username The user that owns the private keys associated with the `from` addresses
+     * @param password The password unlocking the user
+     * @param sendOutputs The array of SendOutputs. A SendOutput is an object literal which contains an assetID, amount, and to.
+     * @param from Optional. An array of addresses managed by the node's keystore for this blockchain which will fund this transaction
+     * @param changeAddr Optional. An address to send the change
+     * @param memo Optional. CB58 Buffer or String which contains arbitrary bytes, up to 256 bytes
+     *
+     * @returns Promise for the string representing the transaction's ID.
+     */
+
+
+    this.sendMultiple = (username, password, sendOutputs, from = undefined, changeAddr = undefined, memo = undefined) => __awaiter(this, void 0, void 0, function* () {
+      let asset;
+      let amnt;
+      let sOutputs = [];
+      sendOutputs.forEach(output => {
+        if (typeof this.parseAddress(output.to) === 'undefined') {
+          /* istanbul ignore next */
+          throw new Error(`Error - AVMAPI.sendMultiple: Invalid address format ${output.to}`);
+        }
+
+        if (typeof output.assetID !== 'string') {
+          asset = bintools.cb58Encode(output.assetID);
+        } else {
+          asset = output.assetID;
+        }
+
+        if (typeof output.amount === 'number') {
+          amnt = new bn_js_1.default(output.amount);
+        } else {
+          amnt = output.amount;
+        }
+
+        sOutputs.push({
+          to: output.to,
+          assetID: asset,
+          amount: amnt.toString(10)
+        });
+      });
+      const params = {
+        username: username,
+        password: password,
+        outputs: sOutputs
+      };
+      from = this._cleanAddressArray(from, 'send');
+
+      if (typeof from !== "undefined") {
+        params["from"] = from;
+      }
+
+      if (typeof changeAddr !== 'undefined') {
+        if (typeof this.parseAddress(changeAddr) === 'undefined') {
+          /* istanbul ignore next */
+          throw new Error(`Error - AVMAPI.send: Invalid address format ${changeAddr}`);
+        }
+
+        params["changeAddr"] = changeAddr;
+      }
+
+      if (typeof memo !== "undefined") {
+        if (typeof memo !== 'string') {
+          params["memo"] = bintools.cb58Encode(memo);
+        } else {
+          params["memo"] = memo;
+        }
+      }
+
+      return this.callMethod('avm.sendMultiple', params).then(response => response.data.result);
     });
     /**
      * Given a JSON representation of this Virtual Machine’s genesis state, create the byte representation of that state.
@@ -1794,12 +2009,15 @@ const credentials_2 = __webpack_require__(/*! ../../common/credentials */ "./nod
 const constants_2 = __webpack_require__(/*! ../../utils/constants */ "./node_modules/avalanche/dist/utils/constants.js");
 
 const tx_2 = __webpack_require__(/*! ./tx */ "./node_modules/avalanche/dist/apis/avm/tx.js");
+
+const serialization_1 = __webpack_require__(/*! ../../utils/serialization */ "./node_modules/avalanche/dist/utils/serialization.js");
 /**
  * @ignore
  */
 
 
 const bintools = bintools_1.default.getInstance();
+const serializer = serialization_1.Serialization.getInstance();
 /**
  * Class representing a base for all transactions.
  */
@@ -1816,13 +2034,44 @@ class BaseTx extends tx_1.StandardBaseTx {
    */
   constructor(networkid = constants_2.DefaultNetworkID, blockchainid = buffer_1.Buffer.alloc(32, 16), outs = undefined, ins = undefined, memo = undefined) {
     super(networkid, blockchainid, outs, ins, memo);
+    this._typeName = "BaseTx";
+    this._typeID = constants_1.AVMConstants.BASETX;
     /**
      * Returns the id of the [[BaseTx]]
      */
 
     this.getTxType = () => {
-      return constants_1.AVMConstants.BASETX;
+      return this._typeID;
     };
+  } //serialize is inherited
+
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.outs = fields["outs"].map(o => {
+      let newOut = new outputs_1.TransferableOutput();
+      newOut.deserialize(o, encoding);
+      return newOut;
+    });
+    this.ins = fields["ins"].map(i => {
+      let newIn = new inputs_1.TransferableInput();
+      newIn.deserialize(i, encoding);
+      return newIn;
+    });
+    this.numouts = serializer.decoder(this.outs.length.toString(), "display", "decimalString", "Buffer", 4);
+    this.numins = serializer.decoder(this.ins.length.toString(), "display", "decimalString", "Buffer", 4);
+  }
+
+  getOuts() {
+    return this.outs;
+  }
+
+  getIns() {
+    return this.ins;
+  }
+
+  getTotalOuts() {
+    return this.getOuts();
   }
   /**
    * Takes a {@link https://github.com/feross/buffer|Buffer} containing an [[BaseTx]], parses it, populates the class, and returns the length of the BaseTx in bytes.
@@ -1867,10 +2116,6 @@ class BaseTx extends tx_1.StandardBaseTx {
     this.memo = bintools.copyFrom(bytes, offset, offset + memolen);
     offset += memolen;
     return offset;
-  }
-
-  getTotalOuts() {
-    return this.getOuts();
   }
   /**
    * Takes the bytes of an [[UnsignedTx]] and returns an array of [[Credential]]s
@@ -2008,12 +2253,15 @@ const initialstates_1 = __webpack_require__(/*! ./initialstates */ "./node_modul
 const basetx_1 = __webpack_require__(/*! ./basetx */ "./node_modules/avalanche/dist/apis/avm/basetx.js");
 
 const constants_2 = __webpack_require__(/*! ../../utils/constants */ "./node_modules/avalanche/dist/utils/constants.js");
+
+const serialization_1 = __webpack_require__(/*! ../../utils/serialization */ "./node_modules/avalanche/dist/utils/serialization.js");
 /**
  * @ignore
  */
 
 
 const bintools = bintools_1.default.getInstance();
+const serializer = serialization_1.Serialization.getInstance();
 
 class CreateAssetTx extends basetx_1.BaseTx {
   /**
@@ -2031,6 +2279,8 @@ class CreateAssetTx extends basetx_1.BaseTx {
    */
   constructor(networkid = constants_2.DefaultNetworkID, blockchainid = buffer_1.Buffer.alloc(32, 16), outs = undefined, ins = undefined, memo = undefined, name = undefined, symbol = undefined, denomination = undefined, initialstate = undefined) {
     super(networkid, blockchainid, outs, ins, memo);
+    this._typeName = "CreateAssetTx";
+    this._typeID = constants_1.AVMConstants.CREATEASSETTX;
     this.name = '';
     this.symbol = '';
     this.denomination = buffer_1.Buffer.alloc(1);
@@ -2040,7 +2290,7 @@ class CreateAssetTx extends basetx_1.BaseTx {
      */
 
     this.getTxType = () => {
-      return constants_1.AVMConstants.CREATEASSETTX;
+      return this._typeID;
     };
     /**
      * Returns the array of array of [[Output]]s for the initial state
@@ -2081,6 +2331,25 @@ class CreateAssetTx extends basetx_1.BaseTx {
       this.symbol = symbol;
       this.denomination.writeUInt8(denomination, 0);
     }
+  }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "name": serializer.encoder(this.name, encoding, "utf8", "utf8"),
+      "symbol": serializer.encoder(this.symbol, encoding, "utf8", "utf8"),
+      "denomination": serializer.encoder(this.denomination, encoding, "Buffer", "decimalString", 1),
+      "initialstate": this.initialstate.serialize(encoding)
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.name = serializer.decoder(fields["name"], encoding, "utf8", "utf8");
+    this.symbol = serializer.decoder(fields["symbol"], encoding, "utf8", "utf8");
+    this.denomination = serializer.decoder(fields["denomination"], encoding, "decimalString", "Buffer", 1);
+    this.initialstate = new initialstates_1.InitialStates();
+    this.initialstate.deserialize(fields["initialstate"], encoding);
   }
   /**
    * Takes a {@link https://github.com/feross/buffer|Buffer} containing an [[CreateAssetTx]], parses it, populates the class, and returns the length of the [[CreateAssetTx]] in bytes.
@@ -2156,34 +2425,19 @@ exports.CreateAssetTx = CreateAssetTx;
 
 "use strict";
 
-
-var __importDefault = this && this.__importDefault || function (mod) {
-  return mod && mod.__esModule ? mod : {
-    "default": mod
-  };
-};
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.NFTCredential = exports.SECPCredential = exports.SelectCredentialClass = void 0;
 /**
  * @packageDocumentation
  * @module API-AVM-Credentials
  */
 
-const bintools_1 = __importDefault(__webpack_require__(/*! ../../utils/bintools */ "./node_modules/avalanche/dist/utils/bintools.js"));
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.NFTCredential = exports.SECPCredential = exports.SelectCredentialClass = void 0;
 
 const constants_1 = __webpack_require__(/*! ./constants */ "./node_modules/avalanche/dist/apis/avm/constants.js");
 
 const credentials_1 = __webpack_require__(/*! ../../common/credentials */ "./node_modules/avalanche/dist/common/credentials.js");
-
-credentials_1.Signature;
-/**
- * @ignore
- */
-
-const bintools = bintools_1.default.getInstance();
 /**
  * Takes a buffer representing the credential and returns the proper [[Credential]] instance.
  *
@@ -2192,15 +2446,14 @@ const bintools = bintools_1.default.getInstance();
  * @returns An instance of an [[Credential]]-extended class.
  */
 
+
 exports.SelectCredentialClass = (credid, ...args) => {
   if (credid === constants_1.AVMConstants.SECPCREDENTIAL) {
-    const secpcred = new SECPCredential(...args);
-    return secpcred;
+    return new SECPCredential(...args);
   }
 
   if (credid === constants_1.AVMConstants.NFTCREDENTIAL) {
-    const nftcred = new NFTCredential(...args);
-    return nftcred;
+    return new NFTCredential(...args);
   }
   /* istanbul ignore next */
 
@@ -2209,8 +2462,15 @@ exports.SelectCredentialClass = (credid, ...args) => {
 };
 
 class SECPCredential extends credentials_1.Credential {
+  constructor() {
+    super(...arguments);
+    this._typeName = "SECPCredential";
+    this._typeID = constants_1.AVMConstants.SECPCREDENTIAL;
+  } //serialize and deserialize both are inherited
+
+
   getCredentialID() {
-    return constants_1.AVMConstants.SECPCREDENTIAL;
+    return this._typeID;
   }
 
   clone() {
@@ -2233,8 +2493,15 @@ class SECPCredential extends credentials_1.Credential {
 exports.SECPCredential = SECPCredential;
 
 class NFTCredential extends credentials_1.Credential {
+  constructor() {
+    super(...arguments);
+    this._typeName = "NFTCredential";
+    this._typeID = constants_1.AVMConstants.NFTCREDENTIAL;
+  } //serialize and deserialize both are inherited
+
+
   getCredentialID() {
-    return constants_1.AVMConstants.NFTCREDENTIAL;
+    return this._typeID;
   }
 
   clone() {
@@ -2296,12 +2563,15 @@ const basetx_1 = __webpack_require__(/*! ./basetx */ "./node_modules/avalanche/d
 const constants_2 = __webpack_require__(/*! ../../utils/constants */ "./node_modules/avalanche/dist/utils/constants.js");
 
 const bn_js_1 = __importDefault(__webpack_require__(/*! bn.js */ "./node_modules/avalanche/node_modules/bn.js/lib/bn.js"));
+
+const serialization_1 = __webpack_require__(/*! ../../utils/serialization */ "./node_modules/avalanche/dist/utils/serialization.js");
 /**
  * @ignore
  */
 
 
 const bintools = bintools_1.default.getInstance();
+const serializer = serialization_1.Serialization.getInstance();
 /**
  * Class representing an unsigned Export transaction.
  */
@@ -2320,6 +2590,8 @@ class ExportTx extends basetx_1.BaseTx {
      */
   constructor(networkid = constants_2.DefaultNetworkID, blockchainid = buffer_1.Buffer.alloc(32, 16), outs = undefined, ins = undefined, memo = undefined, destinationChain = undefined, exportOuts = undefined) {
     super(networkid, blockchainid, outs, ins, memo);
+    this._typeName = "ExportTx";
+    this._typeID = constants_1.AVMConstants.EXPORTTX;
     this.destinationChain = undefined;
     this.numOuts = buffer_1.Buffer.alloc(4);
     this.exportOuts = [];
@@ -2328,7 +2600,7 @@ class ExportTx extends basetx_1.BaseTx {
        */
 
     this.getTxType = () => {
-      return constants_1.AVMConstants.EXPORTTX;
+      return this._typeID;
     };
     /**
      * Returns a {@link https://github.com/feross/buffer|Buffer} for the destination chainid.
@@ -2350,6 +2622,26 @@ class ExportTx extends basetx_1.BaseTx {
 
       this.exportOuts = exportOuts;
     }
+  }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "destinationChain": serializer.encoder(this.destinationChain, encoding, "Buffer", "cb58"),
+      "exportOuts": this.exportOuts.map(e => e.serialize(encoding))
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.destinationChain = serializer.decoder(fields["destinationChain"], encoding, "cb58", "Buffer", 32);
+    this.exportOuts = fields["exportOuts"].map(e => {
+      let eo = new outputs_1.TransferableOutput();
+      eo.deserialize(e, encoding);
+      return eo;
+    });
+    this.numOuts = buffer_1.Buffer.alloc(4);
+    this.numOuts.writeUInt32BE(this.exportOuts.length, 0);
   }
   /**
    * Returns an array of [[TransferableOutput]]s in this transaction.
@@ -2481,12 +2773,15 @@ const credentials_1 = __webpack_require__(/*! ./credentials */ "./node_modules/a
 const credentials_2 = __webpack_require__(/*! ../../common/credentials */ "./node_modules/avalanche/dist/common/credentials.js");
 
 const constants_2 = __webpack_require__(/*! ../../utils/constants */ "./node_modules/avalanche/dist/utils/constants.js");
+
+const serialization_1 = __webpack_require__(/*! ../../utils/serialization */ "./node_modules/avalanche/dist/utils/serialization.js");
 /**
  * @ignore
  */
 
 
 const bintools = bintools_1.default.getInstance();
+const serializer = serialization_1.Serialization.getInstance();
 /**
  * Class representing an unsigned Import transaction.
  */
@@ -2505,6 +2800,8 @@ class ImportTx extends basetx_1.BaseTx {
    */
   constructor(networkid = constants_2.DefaultNetworkID, blockchainid = buffer_1.Buffer.alloc(32, 16), outs = undefined, ins = undefined, memo = undefined, sourceChain = undefined, importIns = undefined) {
     super(networkid, blockchainid, outs, ins, memo);
+    this._typeName = "ImportTx";
+    this._typeID = constants_1.AVMConstants.IMPORTTX;
     this.sourceChain = buffer_1.Buffer.alloc(32);
     this.numIns = buffer_1.Buffer.alloc(4);
     this.importIns = [];
@@ -2513,7 +2810,7 @@ class ImportTx extends basetx_1.BaseTx {
        */
 
     this.getTxType = () => {
-      return constants_1.AVMConstants.IMPORTTX;
+      return this._typeID;
     };
     /**
      * Returns a {@link https://github.com/feross/buffer|Buffer} for the source chainid.
@@ -2535,6 +2832,26 @@ class ImportTx extends basetx_1.BaseTx {
 
       this.importIns = importIns;
     }
+  }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "sourceChain": serializer.encoder(this.sourceChain, encoding, "Buffer", "cb58"),
+      "importIns": this.importIns.map(i => i.serialize(encoding))
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.sourceChain = serializer.decoder(fields["sourceChain"], encoding, "cb58", "Buffer", 32);
+    this.importIns = fields["importIns"].map(i => {
+      let ii = new inputs_1.TransferableInput();
+      ii.deserialize(i, encoding);
+      return ii;
+    });
+    this.numIns = buffer_1.Buffer.alloc(4);
+    this.numIns.writeUInt32BE(this.importIns.length, 0);
   }
   /**
      * Takes a {@link https://github.com/feross/buffer|Buffer} containing an [[ImportTx]], parses it, populates the class, and returns the length of the [[ImportTx]] in bytes.
@@ -2731,26 +3048,59 @@ exports.InitialStates = void 0;
 const buffer_1 = __webpack_require__(/*! buffer/ */ "./node_modules/node-libs-browser/node_modules/buffer/index.js");
 
 const bintools_1 = __importDefault(__webpack_require__(/*! ../../utils/bintools */ "./node_modules/avalanche/dist/utils/bintools.js"));
-/**
- * @ignore
- */
-
-
-const bintools = bintools_1.default.getInstance();
 
 const output_1 = __webpack_require__(/*! ../../common/output */ "./node_modules/avalanche/dist/common/output.js");
 
 const outputs_1 = __webpack_require__(/*! ./outputs */ "./node_modules/avalanche/dist/apis/avm/outputs.js");
 
 const constants_1 = __webpack_require__(/*! ./constants */ "./node_modules/avalanche/dist/apis/avm/constants.js");
+
+const serialization_1 = __webpack_require__(/*! ../../utils/serialization */ "./node_modules/avalanche/dist/utils/serialization.js");
+/**
+ * @ignore
+ */
+
+
+const bintools = bintools_1.default.getInstance();
+const serializer = serialization_1.Serialization.getInstance();
 /**
  * Class for creating initial output states used in asset creation
  */
 
-
-class InitialStates {
+class InitialStates extends serialization_1.Serializable {
   constructor() {
+    super(...arguments);
+    this._typeName = "AmountInput";
+    this._typeID = undefined;
     this.fxs = {};
+  }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    let flatfxs = {};
+
+    for (let fxid in this.fxs) {
+      flatfxs[fxid] = this.fxs[fxid].map(o => o.serialize(encoding));
+    }
+
+    return Object.assign(Object.assign({}, fields), {
+      "fxs": flatfxs
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    let unflat = {};
+
+    for (let fxid in fields["fxs"]) {
+      unflat[fxid] = fields["fxs"][fxid].map(o => {
+        let out = outputs_1.SelectOutputClass(o["_typeID"]);
+        out.deserialize(o, encoding);
+        return out;
+      });
+    }
+
+    this.fxs = unflat;
   }
   /**
      *
@@ -2855,12 +3205,15 @@ const bintools_1 = __importDefault(__webpack_require__(/*! ../../utils/bintools 
 const constants_1 = __webpack_require__(/*! ./constants */ "./node_modules/avalanche/dist/apis/avm/constants.js");
 
 const input_1 = __webpack_require__(/*! ../../common/input */ "./node_modules/avalanche/dist/common/input.js");
+
+const serialization_1 = __webpack_require__(/*! ../../utils/serialization */ "./node_modules/avalanche/dist/utils/serialization.js");
 /**
  * @ignore
  */
 
 
 const bintools = bintools_1.default.getInstance();
+const serializer = serialization_1.Serialization.getInstance();
 /**
  * Takes a buffer representing the output and returns the proper [[Input]] instance.
  *
@@ -2871,8 +3224,7 @@ const bintools = bintools_1.default.getInstance();
 
 exports.SelectInputClass = (inputid, ...args) => {
   if (inputid === constants_1.AVMConstants.SECPINPUTID) {
-    const secpin = new SECPTransferInput(...args);
-    return secpin;
+    return new SECPTransferInput(...args);
   }
   /* istanbul ignore next */
 
@@ -2881,6 +3233,18 @@ exports.SelectInputClass = (inputid, ...args) => {
 };
 
 class TransferableInput extends input_1.StandardTransferableInput {
+  constructor() {
+    super(...arguments);
+    this._typeName = "TransferableInput";
+    this._typeID = undefined;
+  } //serialize is inherited
+
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.input = exports.SelectInputClass(fields["input"]["_typeID"]);
+    this.input.deserialize(fields["input"], encoding);
+  }
   /**
    * Takes a {@link https://github.com/feross/buffer|Buffer} containing a [[TransferableInput]], parses it, populates the class, and returns the length of the [[TransferableInput]] in bytes.
    *
@@ -2888,6 +3252,8 @@ class TransferableInput extends input_1.StandardTransferableInput {
    *
    * @returns The length of the raw [[TransferableInput]]
    */
+
+
   fromBuffer(bytes, offset = 0) {
     this.txid = bintools.copyFrom(bytes, offset, offset + 32);
     offset += 32;
@@ -2906,6 +3272,13 @@ class TransferableInput extends input_1.StandardTransferableInput {
 exports.TransferableInput = TransferableInput;
 
 class AmountInput extends input_1.StandardAmountInput {
+  constructor() {
+    super(...arguments);
+    this._typeName = "AmountInput";
+    this._typeID = undefined;
+  } //serialize and deserialize both are inherited
+
+
   select(id, ...args) {
     return exports.SelectInputClass(id, ...args);
   }
@@ -2917,9 +3290,12 @@ exports.AmountInput = AmountInput;
 class SECPTransferInput extends AmountInput {
   constructor() {
     super(...arguments);
+    this._typeName = "SECPTransferInput";
+    this._typeID = constants_1.AVMConstants.SECPINPUTID;
 
     this.getCredentialID = () => constants_1.AVMConstants.SECPCREDENTIAL;
-  }
+  } //serialize and deserialize both are inherited
+
   /**
      * Returns the inputID for this input
      */
@@ -3177,25 +3553,31 @@ exports.MinterSet = void 0;
 const buffer_1 = __webpack_require__(/*! buffer/ */ "./node_modules/node-libs-browser/node_modules/buffer/index.js");
 
 const bintools_1 = __importDefault(__webpack_require__(/*! ../../utils/bintools */ "./node_modules/avalanche/dist/utils/bintools.js"));
+
+const serialization_1 = __webpack_require__(/*! ../../utils/serialization */ "./node_modules/avalanche/dist/utils/serialization.js");
 /**
  * @ignore
  */
 
 
 const bintools = bintools_1.default.getInstance();
+const serializer = serialization_1.Serialization.getInstance();
 /**
  * Class for representing a threshold and set of minting addresses in Avalanche.
  *
  * @typeparam MinterSet including a threshold and array of addresses
  */
 
-class MinterSet {
+class MinterSet extends serialization_1.Serializable {
   /**
    *
    * @param threshold The number of signatures required to mint more of an asset by signing a minting transaction
    * @param minters Array of addresss which are authorized to sign a minting transaction
    */
   constructor(threshold, minters) {
+    super();
+    this._typeName = "MinterSet";
+    this._typeID = undefined;
     this.minters = [];
     /**
      * Returns the threshold.
@@ -3229,6 +3611,20 @@ class MinterSet {
 
     this.threshold = threshold;
     this.minters = this._cleanAddresses(minters);
+  }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "threshold": serializer.encoder(this.threshold, encoding, "number", "decimalString", 4),
+      "minters": this.minters.map(m => serializer.encoder(m, encoding, "Buffer", "cb58", 20))
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.threshold = serializer.decoder(fields["threshold"], encoding, "decimalString", "number", 4);
+    this.minters = fields["minters"].map(m => serializer.decoder(m, encoding, "cb58", "Buffer", 20));
   }
 
 }
@@ -3277,12 +3673,15 @@ const credentials_2 = __webpack_require__(/*! ../../common/credentials */ "./nod
 const basetx_1 = __webpack_require__(/*! ./basetx */ "./node_modules/avalanche/dist/apis/avm/basetx.js");
 
 const constants_2 = __webpack_require__(/*! ../../utils/constants */ "./node_modules/avalanche/dist/utils/constants.js");
+
+const serialization_1 = __webpack_require__(/*! ../../utils/serialization */ "./node_modules/avalanche/dist/utils/serialization.js");
 /**
  * @ignore
  */
 
 
 const bintools = bintools_1.default.getInstance();
+const serializer = serialization_1.Serialization.getInstance();
 /**
  * Class representing an unsigned Operation transaction.
  */
@@ -3300,6 +3699,8 @@ class OperationTx extends basetx_1.BaseTx {
    */
   constructor(networkid = constants_2.DefaultNetworkID, blockchainid = buffer_1.Buffer.alloc(32, 16), outs = undefined, ins = undefined, memo = undefined, ops = undefined) {
     super(networkid, blockchainid, outs, ins, memo);
+    this._typeName = "OperationTx";
+    this._typeID = constants_1.AVMConstants.OPERATIONTX;
     this.numOps = buffer_1.Buffer.alloc(4);
     this.ops = [];
     /**
@@ -3307,7 +3708,7 @@ class OperationTx extends basetx_1.BaseTx {
      */
 
     this.getTxType = () => {
-      return constants_1.AVMConstants.OPERATIONTX;
+      return this._typeID;
     };
 
     if (typeof ops !== 'undefined' && Array.isArray(ops)) {
@@ -3319,6 +3720,24 @@ class OperationTx extends basetx_1.BaseTx {
 
       this.ops = ops;
     }
+  }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "ops": this.ops.map(o => o.serialize(encoding))
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.ops = fields["ops"].map(o => {
+      let op = new ops_1.TransferableOperation();
+      op.deserialize(o, encoding);
+      return op;
+    });
+    this.numOps = buffer_1.Buffer.alloc(4);
+    this.numOps.writeUInt32BE(this.ops.length, 0);
   }
   /**
    * Takes a {@link https://github.com/feross/buffer|Buffer} containing an [[OperationTx]], parses it, populates the class, and returns the length of the [[OperationTx]] in bytes.
@@ -3455,7 +3874,10 @@ const credentials_1 = __webpack_require__(/*! ../../common/credentials */ "./nod
 
 const output_1 = __webpack_require__(/*! ../../common/output */ "./node_modules/avalanche/dist/common/output.js");
 
+const serialization_1 = __webpack_require__(/*! ../../utils/serialization */ "./node_modules/avalanche/dist/utils/serialization.js");
+
 const bintools = bintools_1.default.getInstance();
+const serializer = serialization_1.Serialization.getInstance();
 /**
  * Takes a buffer representing the output and returns the proper [[Operation]] instance.
  *
@@ -3482,8 +3904,11 @@ exports.SelectOperationClass = (opid, ...args) => {
  */
 
 
-class Operation {
+class Operation extends serialization_1.Serializable {
   constructor() {
+    super(...arguments);
+    this._typeName = "Operation";
+    this._typeID = undefined;
     this.sigCount = buffer_1.Buffer.alloc(4);
     this.sigIdxs = []; // idxs of signers from utxo
 
@@ -3509,6 +3934,23 @@ class Operation {
       this.sigIdxs.push(sigidx);
       this.sigCount.writeUInt32BE(this.sigIdxs.length, 0);
     };
+  }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "sigIdxs": this.sigIdxs.map(s => s.serialize(encoding))
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.sigIdxs = fields["sigIdxs"].map(s => {
+      let sidx = new credentials_1.SigIdx();
+      sidx.deserialize(s, encoding);
+      return sidx;
+    });
+    this.sigCount.writeUInt32BE(this.sigIdxs.length, 0);
   }
 
   fromBuffer(bytes, offset = 0) {
@@ -3571,8 +4013,11 @@ Operation.comparator = () => (a, b) => {
  */
 
 
-class TransferableOperation {
+class TransferableOperation extends serialization_1.Serializable {
   constructor(assetid = undefined, utxoids = undefined, operation = undefined) {
+    super();
+    this._typeName = "TransferableOperation";
+    this._typeID = undefined;
     this.assetid = buffer_1.Buffer.alloc(32);
     this.utxoIDs = [];
     /**
@@ -3611,6 +4056,27 @@ class TransferableOperation {
         this.utxoIDs.push(utxoid);
       }
     }
+  }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "assetid": serializer.encoder(this.assetid, encoding, "Buffer", "cb58", 32),
+      "utxoIDs": this.utxoIDs.map(u => u.serialize(encoding)),
+      "operation": this.operation.serialize(encoding)
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.assetid = serializer.decoder(fields["assetid"], encoding, "cb58", "Buffer", 32);
+    this.utxoIDs = fields["utxoIDs"].map(u => {
+      let utxoid = new UTXOID();
+      utxoid.deserialize(u, encoding);
+      return utxoid;
+    });
+    this.operation = exports.SelectOperationClass(fields["operation"]["_typeID"]);
+    this.operation.deserialize(fields["operation"], encoding);
   }
 
   fromBuffer(bytes, offset = 0) {
@@ -3677,20 +4143,38 @@ class SECPMintOperation extends Operation {
    * An [[Operation]] class which mints new tokens on an assetID.
    *
    * @param mintOutput The [[SECPMintOutput]] that will be produced by this transaction.
-   * @param transferOutputs An array of [[SECPTransferOutput]]s that will be produced from this minting operation.
+   * @param transferOutput A [[SECPTransferOutput]] that will be produced from this minting operation.
    */
-  constructor(mintOutput = undefined, transferOutputs = undefined) {
+  constructor(mintOutput = undefined, transferOutput = undefined) {
     super();
+    this._typeName = "SECPMintOperation";
+    this._typeID = constants_1.AVMConstants.SECPMINTOPID;
     this.mintOutput = undefined;
-    this.transferOutputs = [];
+    this.transferOutput = undefined;
 
     if (typeof mintOutput !== 'undefined') {
       this.mintOutput = mintOutput;
     }
 
-    if (typeof transferOutputs !== 'undefined' && transferOutputs.length) {
-      this.transferOutputs = transferOutputs;
+    if (typeof transferOutput !== 'undefined') {
+      this.transferOutput = transferOutput;
     }
+  }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "mintOutput": this.mintOutput.serialize(encoding),
+      "transferOutputs": this.transferOutput.serialize(encoding)
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.mintOutput = new outputs_1.SECPMintOutput();
+    this.mintOutput.deserialize(fields["mintOutput"], encoding);
+    this.transferOutput = new outputs_1.SECPTransferOutput();
+    this.transferOutput.deserialize(fields["transferOutputs"], encoding);
   }
   /**
    * Returns the operation ID.
@@ -3698,7 +4182,7 @@ class SECPMintOperation extends Operation {
 
 
   getOperationID() {
-    return constants_1.AVMConstants.SECPMINTOPID;
+    return this._typeID;
   }
   /**
    * Returns the credential ID.
@@ -3717,12 +4201,12 @@ class SECPMintOperation extends Operation {
     return this.mintOutput;
   }
   /**
-   * Returns the array of [[SECPTransferOutput]]s to be produced by this operation.
+   * Returns [[SECPTransferOutput]] to be produced by this operation.
    */
 
 
-  getTransferOutputs() {
-    return this.transferOutputs;
+  getTransferOutput() {
+    return this.transferOutput;
   }
   /**
    * Popuates the instance from a {@link https://github.com/feross/buffer|Buffer} representing the [[SECPMintOperation]] and returns the updated offset.
@@ -3733,16 +4217,8 @@ class SECPMintOperation extends Operation {
     offset = super.fromBuffer(bytes, offset);
     this.mintOutput = new outputs_1.SECPMintOutput();
     offset = this.mintOutput.fromBuffer(bytes, offset);
-    let numoutputs = bintools.copyFrom(bytes, offset, offset + 4).readUInt32BE(0);
-    offset += 4;
-    this.transferOutputs = [];
-
-    for (let i = 0; i < numoutputs; i++) {
-      let transferOut = new outputs_1.SECPTransferOutput();
-      offset = transferOut.fromBuffer(bytes, offset);
-      this.transferOutputs.push(transferOut);
-    }
-
+    this.transferOutput = new outputs_1.SECPTransferOutput();
+    offset = this.transferOutput.fromBuffer(bytes, offset);
     return offset;
   }
   /**
@@ -3753,15 +4229,9 @@ class SECPMintOperation extends Operation {
   toBuffer() {
     let superbuff = super.toBuffer();
     let mintoutBuff = this.mintOutput.toBuffer();
-    let bsize = superbuff.length + mintoutBuff.length;
-    let barr = [superbuff, mintoutBuff];
-
-    for (let i = 0; i < this.transferOutputs.length; i++) {
-      let b = this.transferOutputs[i].toBuffer();
-      barr.push(b);
-      bsize += b.length;
-    }
-
+    let transferOutBuff = this.transferOutput.toBuffer();
+    let bsize = superbuff.length + mintoutBuff.length + transferOutBuff.length;
+    let barr = [superbuff, mintoutBuff, transferOutBuff];
     return buffer_1.Buffer.concat(barr, bsize);
   }
 
@@ -3782,6 +4252,8 @@ class NFTMintOperation extends Operation {
    */
   constructor(groupID = undefined, payload = undefined, outputOwners = undefined) {
     super();
+    this._typeName = "NFTMintOperation";
+    this._typeID = constants_1.AVMConstants.NFTMINTOPID;
     this.groupID = buffer_1.Buffer.alloc(4);
     this.outputOwners = [];
     /**
@@ -3816,13 +4288,33 @@ class NFTMintOperation extends Operation {
       this.outputOwners = outputOwners;
     }
   }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "groupID": serializer.encoder(this.groupID, encoding, "Buffer", "decimalString", 4),
+      "payload": serializer.encoder(this.payload, encoding, "Buffer", "hex"),
+      "outputOwners": this.outputOwners.map(o => o.serialize(encoding))
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.groupID = serializer.decoder(fields["groupID"], encoding, "decimalString", "Buffer", 4);
+    this.payload = serializer.decoder(fields["payload"], encoding, "hex", "Buffer");
+    this.outputOwners = fields["outputOwners"].map(o => {
+      let oo = new output_1.OutputOwners();
+      oo.deserialize(o, encoding);
+      return oo;
+    });
+  }
   /**
    * Returns the operation ID.
    */
 
 
   getOperationID() {
-    return constants_1.AVMConstants.NFTMINTOPID;
+    return this._typeID;
   }
   /**
    * Returns the credential ID.
@@ -3903,6 +4395,8 @@ class NFTTransferOperation extends Operation {
      */
   constructor(output = undefined) {
     super();
+    this._typeName = "NFTTransferOperation";
+    this._typeID = constants_1.AVMConstants.NFTXFEROPID;
 
     this.getOutput = () => this.output;
 
@@ -3910,13 +4404,26 @@ class NFTTransferOperation extends Operation {
       this.output = output;
     }
   }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "output": this.output.serialize(encoding)
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.output = new outputs_1.NFTTransferOutput();
+    this.output.deserialize(fields["output"], encoding);
+  }
   /**
    * Returns the operation ID.
    */
 
 
   getOperationID() {
-    return constants_1.AVMConstants.NFTXFEROPID;
+    return this._typeID;
   }
   /**
    * Returns the credential ID.
@@ -3974,6 +4481,9 @@ class UTXOID extends nbytes_1.NBytes {
      */
   constructor() {
     super();
+    this._typeName = "UTXOID";
+    this._typeID = undefined; //serialize and deserialize both are inherited
+
     this.bytes = buffer_1.Buffer.alloc(36);
     this.bsize = 36;
   }
@@ -4069,7 +4579,10 @@ const constants_1 = __webpack_require__(/*! ./constants */ "./node_modules/avala
 
 const output_1 = __webpack_require__(/*! ../../common/output */ "./node_modules/avalanche/dist/common/output.js");
 
+const serialization_1 = __webpack_require__(/*! ../../utils/serialization */ "./node_modules/avalanche/dist/utils/serialization.js");
+
 const bintools = bintools_1.default.getInstance();
+const serializer = serialization_1.Serialization.getInstance();
 /**
  * Takes a buffer representing the output and returns the proper Output instance.
  *
@@ -4080,23 +4593,32 @@ const bintools = bintools_1.default.getInstance();
 
 exports.SelectOutputClass = (outputid, ...args) => {
   if (outputid == constants_1.AVMConstants.SECPXFEROUTPUTID) {
-    let secpout = new SECPTransferOutput(...args);
-    return secpout;
+    return new SECPTransferOutput(...args);
   } else if (outputid == constants_1.AVMConstants.SECPMINTOUTPUTID) {
-    let secpmintout = new SECPMintOutput(...args);
-    return secpmintout;
+    return new SECPMintOutput(...args);
   } else if (outputid == constants_1.AVMConstants.NFTMINTOUTPUTID) {
-    let nftout = new NFTMintOutput(...args);
-    return nftout;
+    return new NFTMintOutput(...args);
   } else if (outputid == constants_1.AVMConstants.NFTXFEROUTPUTID) {
-    let nftout = new NFTTransferOutput(...args);
-    return nftout;
+    return new NFTTransferOutput(...args);
   }
 
   throw new Error("Error - SelectOutputClass: unknown outputid " + outputid);
 };
 
 class TransferableOutput extends output_1.StandardTransferableOutput {
+  constructor() {
+    super(...arguments);
+    this._typeName = "TransferableOutput";
+    this._typeID = undefined;
+  } //serialize is inherited
+
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.output = exports.SelectOutputClass(fields["output"]["_typeID"]);
+    this.output.deserialize(fields["output"], encoding);
+  }
+
   fromBuffer(bytes, offset = 0) {
     this.assetID = bintools.copyFrom(bytes, offset, offset + constants_1.AVMConstants.ASSETIDLEN);
     offset += constants_1.AVMConstants.ASSETIDLEN;
@@ -4111,10 +4633,18 @@ class TransferableOutput extends output_1.StandardTransferableOutput {
 exports.TransferableOutput = TransferableOutput;
 
 class AmountOutput extends output_1.StandardAmountOutput {
+  constructor() {
+    super(...arguments);
+    this._typeName = "AmountOutput";
+    this._typeID = undefined;
+  } //serialize and deserialize both are inherited
+
   /**
    *
    * @param assetID An assetID which is wrapped around the Buffer of the Output
    */
+
+
   makeTransferable(assetID) {
     return new TransferableOutput(assetID, this);
   }
@@ -4128,10 +4658,18 @@ class AmountOutput extends output_1.StandardAmountOutput {
 exports.AmountOutput = AmountOutput;
 
 class NFTOutput extends output_1.BaseNFTOutput {
+  constructor() {
+    super(...arguments);
+    this._typeName = "NFTOutput";
+    this._typeID = undefined;
+  } //serialize and deserialize both are inherited
+
   /**
    *
    * @param assetID An assetID which is wrapped around the Buffer of the Output
    */
+
+
   makeTransferable(assetID) {
     return new TransferableOutput(assetID, this);
   }
@@ -4148,11 +4686,19 @@ exports.NFTOutput = NFTOutput;
  */
 
 class SECPTransferOutput extends AmountOutput {
+  constructor() {
+    super(...arguments);
+    this._typeName = "SECPTransferOutput";
+    this._typeID = constants_1.AVMConstants.SECPXFEROUTPUTID;
+  } //serialize and deserialize both are inherited
+
   /**
      * Returns the outputID for this output
      */
+
+
   getOutputID() {
-    return constants_1.AVMConstants.SECPXFEROUTPUTID;
+    return this._typeID;
   }
 
   create(...args) {
@@ -4173,11 +4719,19 @@ exports.SECPTransferOutput = SECPTransferOutput;
  */
 
 class SECPMintOutput extends output_1.Output {
+  constructor() {
+    super(...arguments);
+    this._typeName = "SECPMintOutput";
+    this._typeID = constants_1.AVMConstants.SECPMINTOUTPUTID;
+  } //serialize and deserialize both are inherited
+
   /**
    * Returns the outputID for this output
    */
+
+
   getOutputID() {
-    return constants_1.AVMConstants.SECPMINTOUTPUTID;
+    return this._typeID;
   }
   /**
    *
@@ -4212,10 +4766,30 @@ exports.SECPMintOutput = SECPMintOutput;
 
 class NFTMintOutput extends NFTOutput {
   /**
+   * An [[Output]] class which contains an NFT mint for an assetID.
+   *
+   * @param groupID A number specifies the group this NFT is issued to
+   * @param locktime A {@link https://github.com/indutny/bn.js/|BN} representing the locktime
+   * @param threshold A number representing the the threshold number of signers required to sign the transaction
+   * @param addresses An array of {@link https://github.com/feross/buffer|Buffer}s representing addresses
+   */
+  constructor(groupID = undefined, addresses = undefined, locktime = undefined, threshold = undefined) {
+    super(addresses, locktime, threshold);
+    this._typeName = "NFTMintOutput";
+    this._typeID = constants_1.AVMConstants.NFTMINTOUTPUTID;
+
+    if (typeof groupID !== 'undefined') {
+      this.groupID.writeUInt32BE(groupID, 0);
+    }
+  } //serialize and deserialize both are inherited
+
+  /**
    * Returns the outputID for this output
    */
+
+
   getOutputID() {
-    return constants_1.AVMConstants.NFTMINTOUTPUTID;
+    return this._typeID;
   }
   /**
    * Popuates the instance from a {@link https://github.com/feross/buffer|Buffer} representing the [[NFTMintOutput]] and returns the size of the output.
@@ -4248,23 +4822,6 @@ class NFTMintOutput extends NFTOutput {
     newout.fromBuffer(this.toBuffer());
     return newout;
   }
-  /**
-   * An [[Output]] class which contains an NFT mint for an assetID.
-   *
-   * @param groupID A number specifies the group this NFT is issued to
-   * @param locktime A {@link https://github.com/indutny/bn.js/|BN} representing the locktime
-   * @param threshold A number representing the the threshold number of signers required to sign the transaction
-   * @param addresses An array of {@link https://github.com/feross/buffer|Buffer}s representing addresses
-   */
-
-
-  constructor(groupID = undefined, addresses = undefined, locktime = undefined, threshold = undefined) {
-    super(addresses, locktime, threshold);
-
-    if (typeof groupID !== 'undefined') {
-      this.groupID.writeUInt32BE(groupID, 0);
-    }
-  }
 
 }
 
@@ -4285,6 +4842,8 @@ class NFTTransferOutput extends NFTOutput {
         */
   constructor(groupID = undefined, payload = undefined, addresses = undefined, locktime = undefined, threshold = undefined) {
     super(addresses, locktime, threshold);
+    this._typeName = "NFTTransferOutput";
+    this._typeID = constants_1.AVMConstants.NFTXFEROUTPUTID;
     this.sizePayload = buffer_1.Buffer.alloc(4);
     /**
      * Returns the payload as a {@link https://github.com/feross/buffer|Buffer} with content only.
@@ -4304,13 +4863,27 @@ class NFTTransferOutput extends NFTOutput {
       this.payload = bintools.copyFrom(payload, 0, payload.length);
     }
   }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "payload": serializer.encoder(this.payload, encoding, "Buffer", "hex", this.payload.length)
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.payload = serializer.decoder(fields["payload"], encoding, "hex", "Buffer");
+    this.sizePayload = buffer_1.Buffer.alloc(4);
+    this.sizePayload.writeUInt32BE(this.payload.length, 0);
+  }
   /**
    * Returns the outputID for this output
    */
 
 
   getOutputID() {
-    return constants_1.AVMConstants.NFTXFEROUTPUTID;
+    return this._typeID;
   }
   /**
    * Popuates the instance from a {@link https://github.com/feross/buffer|Buffer} representing the [[NFTTransferOutput]] and returns the size of the output.
@@ -4375,7 +4948,7 @@ var __importDefault = this && this.__importDefault || function (mod) {
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.SelectTxClass = exports.Tx = exports.UnsignedTx = void 0;
+exports.Tx = exports.UnsignedTx = exports.SelectTxClass = void 0;
 /**
  * @packageDocumentation
  * @module API-AVM-Transactions
@@ -4402,14 +4975,59 @@ const operationtx_1 = __webpack_require__(/*! ./operationtx */ "./node_modules/a
 const importtx_1 = __webpack_require__(/*! ./importtx */ "./node_modules/avalanche/dist/apis/avm/importtx.js");
 
 const exporttx_1 = __webpack_require__(/*! ./exporttx */ "./node_modules/avalanche/dist/apis/avm/exporttx.js");
+
+const serialization_1 = __webpack_require__(/*! ../../utils/serialization */ "./node_modules/avalanche/dist/utils/serialization.js");
 /**
  * @ignore
  */
 
 
 const bintools = bintools_1.default.getInstance();
+const serializer = serialization_1.Serialization.getInstance();
+/**
+ * Takes a buffer representing the output and returns the proper [[BaseTx]] instance.
+ *
+ * @param txtype The id of the transaction type
+ *
+ * @returns An instance of an [[BaseTx]]-extended class.
+ */
+
+exports.SelectTxClass = (txtype, ...args) => {
+  if (txtype === constants_1.AVMConstants.BASETX) {
+    return new basetx_1.BaseTx(...args);
+  } else if (txtype === constants_1.AVMConstants.CREATEASSETTX) {
+    return new createassettx_1.CreateAssetTx(...args);
+  } else if (txtype === constants_1.AVMConstants.OPERATIONTX) {
+    return new operationtx_1.OperationTx(...args);
+  } else if (txtype === constants_1.AVMConstants.IMPORTTX) {
+    return new importtx_1.ImportTx(...args);
+  } else if (txtype === constants_1.AVMConstants.EXPORTTX) {
+    return new exporttx_1.ExportTx(...args);
+  }
+  /* istanbul ignore next */
+
+
+  throw new Error(`Error - SelectTxClass: unknown txtype ${txtype}`);
+};
 
 class UnsignedTx extends tx_1.StandardUnsignedTx {
+  constructor() {
+    super(...arguments);
+    this._typeName = "UnsignedTx";
+    this._typeID = undefined;
+  } //serialize is inherited
+
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.transaction = exports.SelectTxClass(fields["transaction"]["_typeID"]);
+    this.transaction.deserialize(fields["transaction"], encoding);
+  }
+
+  getTransaction() {
+    return this.transaction;
+  }
+
   fromBuffer(bytes, offset = 0) {
     this.codecid = bintools.copyFrom(bytes, offset, offset + 2).readUInt16BE(0);
     offset += 2;
@@ -4439,6 +5057,25 @@ class UnsignedTx extends tx_1.StandardUnsignedTx {
 exports.UnsignedTx = UnsignedTx;
 
 class Tx extends tx_1.StandardTx {
+  constructor() {
+    super(...arguments);
+    this._typeName = "Tx";
+    this._typeID = undefined;
+  } //serialize is inherited
+
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.unsignedTx = new UnsignedTx();
+    this.unsignedTx.deserialize(fields["unsignedTx"], encoding);
+    this.credentials = [];
+
+    for (let i = 0; i < fields["credentials"].length; i++) {
+      const cred = credentials_1.SelectCredentialClass(fields["credentials"][i]["_typeID"]);
+      cred.deserialize(fields["credentials"][i], encoding);
+      this.credentials.push(cred);
+    }
+  }
   /**
    * Takes a {@link https://github.com/feross/buffer|Buffer} containing an [[Tx]], parses it, populates the class, and returns the length of the Tx in bytes.
    *
@@ -4447,6 +5084,8 @@ class Tx extends tx_1.StandardTx {
    *
    * @returns The length of the raw [[Tx]]
    */
+
+
   fromBuffer(bytes, offset = 0) {
     this.unsignedTx = new UnsignedTx();
     offset = this.unsignedTx.fromBuffer(bytes, offset);
@@ -4468,36 +5107,6 @@ class Tx extends tx_1.StandardTx {
 }
 
 exports.Tx = Tx;
-/**
- * Takes a buffer representing the output and returns the proper [[BaseTx]] instance.
- *
- * @param txtype The id of the transaction type
- *
- * @returns An instance of an [[BaseTx]]-extended class.
- */
-
-exports.SelectTxClass = (txtype, ...args) => {
-  if (txtype === constants_1.AVMConstants.BASETX) {
-    const tx = new basetx_1.BaseTx(...args);
-    return tx;
-  } else if (txtype === constants_1.AVMConstants.CREATEASSETTX) {
-    const tx = new createassettx_1.CreateAssetTx(...args);
-    return tx;
-  } else if (txtype === constants_1.AVMConstants.OPERATIONTX) {
-    const tx = new operationtx_1.OperationTx(...args);
-    return tx;
-  } else if (txtype === constants_1.AVMConstants.IMPORTTX) {
-    const tx = new importtx_1.ImportTx(...args);
-    return tx;
-  } else if (txtype === constants_1.AVMConstants.EXPORTTX) {
-    const tx = new exporttx_1.ExportTx(...args);
-    return tx;
-  }
-  /* istanbul ignore next */
-
-
-  throw new Error(`Error - SelectTxClass: unknown txtype ${txtype}`);
-};
 
 /***/ }),
 
@@ -4524,7 +5133,7 @@ exports.UTXOSet = exports.AssetAmountDestination = exports.UTXO = void 0;
 /**
  * @packageDocumentation
  * @module API-AVM-UTXOs
- */
+  */
 
 const buffer_1 = __webpack_require__(/*! buffer/ */ "./node_modules/node-libs-browser/node_modules/buffer/index.js");
 
@@ -4561,17 +5170,33 @@ const importtx_1 = __webpack_require__(/*! ./importtx */ "./node_modules/avalanc
 const constants_2 = __webpack_require__(/*! ../../utils/constants */ "./node_modules/avalanche/dist/utils/constants.js");
 
 const assetamount_1 = __webpack_require__(/*! ../../common/assetamount */ "./node_modules/avalanche/dist/common/assetamount.js");
+
+const serialization_1 = __webpack_require__(/*! ../../utils/serialization */ "./node_modules/avalanche/dist/utils/serialization.js");
 /**
  * @ignore
  */
 
 
 const bintools = bintools_1.default.getInstance();
+const serializer = serialization_1.Serialization.getInstance();
 /**
  * Class for representing a single UTXO.
  */
 
 class UTXO extends utxos_1.StandardUTXO {
+  constructor() {
+    super(...arguments);
+    this._typeName = "UTXO";
+    this._typeID = undefined;
+  } //serialize is inherited
+
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.output = outputs_1.SelectOutputClass(fields["output"]["_typeID"]);
+    this.output.deserialize(fields["output"], encoding);
+  }
+
   fromBuffer(bytes, offset = 0) {
     this.codecid = bintools.copyFrom(bytes, offset, offset + 2);
     offset += 2;
@@ -4639,6 +5264,8 @@ exports.AssetAmountDestination = AssetAmountDestination;
 class UTXOSet extends utxos_1.StandardUTXOSet {
   constructor() {
     super(...arguments);
+    this._typeName = "UTXOSet";
+    this._typeID = undefined;
 
     this.getMinimumSpendable = (aad, asOf = helperfunctions_1.UnixNow(), locktime = new bn_js_1.default(0), threshold = 1) => {
       const utxoArray = this.getAllUTXOs();
@@ -4668,7 +5295,7 @@ class UTXOSet extends utxos_1.StandardUTXOSet {
 
               if (idx === -1) {
                 /* istanbul ignore next */
-                throw new Error('Error - UTXOSet.buildBaseTx: no such ' + `address in output: ${spenders[j]}`);
+                throw new Error('Error - UTXOSet.getMinimumSpendable: no such ' + `address in output: ${spenders[j]}`);
               }
 
               xferin.getInput().addSignatureIdx(idx, spenders[j]);
@@ -4849,7 +5476,7 @@ class UTXOSet extends utxos_1.StandardUTXOSet {
      * @param networkid The number representing NetworkID of the node
      * @param blockchainid The {@link https://github.com/feross/buffer|Buffer} representing the BlockchainID for the transaction
      * @param mintOwner A [[SECPMintOutput]] which specifies the new set of minters
-     * @param transferOwners An array of [[SECPTransferOutput]]s which specifies where the minted tokens will go
+     * @param transferOwner A [[SECPTransferOutput]] which specifies where the minted tokens will go
      * @param fromAddresses The addresses being used to send the funds from the UTXOs {@link https://github.com/feross/buffer|Buffer}
      * @param changeAddresses The addresses that can spend the change remaining from the spent UTXOs
      * @param mintUTXOID The UTXOID for the [[SCPMintOutput]] being spent to produce more tokens
@@ -4860,7 +5487,7 @@ class UTXOSet extends utxos_1.StandardUTXOSet {
      */
 
 
-    this.buildSECPMintTx = (networkid, blockchainid, mintOwner, transferOwners, fromAddresses, changeAddresses, mintUTXOID, fee = undefined, feeAssetID = undefined, memo = undefined, asOf = helperfunctions_1.UnixNow()) => {
+    this.buildSECPMintTx = (networkid, blockchainid, mintOwner, transferOwner, fromAddresses, changeAddresses, mintUTXOID, fee = undefined, feeAssetID = undefined, memo = undefined, asOf = helperfunctions_1.UnixNow()) => {
       const zero = new bn_js_1.default(0);
       let ins = [];
       let outs = [];
@@ -4879,7 +5506,7 @@ class UTXOSet extends utxos_1.StandardUTXOSet {
       }
 
       let ops = [];
-      let mintOp = new ops_1.SECPMintOperation(mintOwner, transferOwners);
+      let mintOp = new ops_1.SECPMintOperation(mintOwner, transferOwner);
       let utxo = this.getUTXO(mintUTXOID);
 
       if (typeof utxo === "undefined") {
@@ -5267,6 +5894,2795 @@ class UTXOSet extends utxos_1.StandardUTXOSet {
       const exportTx = new exporttx_1.ExportTx(networkid, blockchainid, outs, ins, memo, destinationChain, exportouts);
       return new tx_1.UnsignedTx(exportTx);
     };
+  } //serialize is inherited
+
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    let utxos = {};
+
+    for (let utxoid in fields["utxos"]) {
+      let utxoidCleaned = serializer.decoder(utxoid, encoding, "base58", "base58");
+      utxos[utxoidCleaned] = new UTXO();
+      utxos[utxoidCleaned].deserialize(fields["utxos"][utxoid], encoding);
+    }
+
+    let addressUTXOs = {};
+
+    for (let address in fields["addressUTXOs"]) {
+      let addressCleaned = serializer.decoder(address, encoding, "cb58", "hex");
+      let utxobalance = {};
+
+      for (let utxoid in fields["addressUTXOs"][address]) {
+        let utxoidCleaned = serializer.decoder(utxoid, encoding, "base58", "base58");
+        utxobalance[utxoidCleaned] = serializer.decoder(fields["addressUTXOs"][address][utxoid], encoding, "decimalString", "BN");
+      }
+
+      addressUTXOs[addressCleaned] = utxobalance;
+    }
+
+    this.utxos = utxos;
+    this.addressUTXOs = addressUTXOs;
+  }
+
+  parseUTXO(utxo) {
+    const utxovar = new UTXO(); // force a copy
+
+    if (typeof utxo === 'string') {
+      utxovar.fromBuffer(bintools.cb58Decode(utxo));
+    } else if (utxo instanceof UTXO) {
+      utxovar.fromBuffer(utxo.toBuffer()); // forces a copy
+    } else {
+      /* istanbul ignore next */
+      throw new Error(`Error - UTXO.parseUTXO: utxo parameter is not a UTXO or string: ${utxo}`);
+    }
+
+    return utxovar;
+  }
+
+  create(...args) {
+    return new UTXOSet();
+  }
+
+  clone() {
+    const newset = this.create();
+    const allUTXOs = this.getAllUTXOs();
+    newset.addArray(allUTXOs);
+    return newset;
+  }
+
+  _feeCheck(fee, feeAssetID) {
+    return typeof fee !== "undefined" && typeof feeAssetID !== "undefined" && fee.gt(new bn_js_1.default(0)) && feeAssetID instanceof buffer_1.Buffer;
+  }
+
+}
+
+exports.UTXOSet = UTXOSet;
+
+/***/ }),
+
+/***/ "./node_modules/avalanche/dist/apis/evm/api.js":
+/*!*****************************************************!*\
+  !*** ./node_modules/avalanche/dist/apis/evm/api.js ***!
+  \*****************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+/**
+ * @packageDocumentation
+ * @module API-EVM
+ */
+
+var __awaiter = this && this.__awaiter || function (thisArg, _arguments, P, generator) {
+  function adopt(value) {
+    return value instanceof P ? value : new P(function (resolve) {
+      resolve(value);
+    });
+  }
+
+  return new (P || (P = Promise))(function (resolve, reject) {
+    function fulfilled(value) {
+      try {
+        step(generator.next(value));
+      } catch (e) {
+        reject(e);
+      }
+    }
+
+    function rejected(value) {
+      try {
+        step(generator["throw"](value));
+      } catch (e) {
+        reject(e);
+      }
+    }
+
+    function step(result) {
+      result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected);
+    }
+
+    step((generator = generator.apply(thisArg, _arguments || [])).next());
+  });
+};
+
+var __importDefault = this && this.__importDefault || function (mod) {
+  return mod && mod.__esModule ? mod : {
+    "default": mod
+  };
+};
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.EVMAPI = void 0;
+
+const buffer_1 = __webpack_require__(/*! buffer/ */ "./node_modules/node-libs-browser/node_modules/buffer/index.js");
+
+const bn_js_1 = __importDefault(__webpack_require__(/*! bn.js */ "./node_modules/avalanche/node_modules/bn.js/lib/bn.js"));
+
+const jrpcapi_1 = __webpack_require__(/*! ../../common/jrpcapi */ "./node_modules/avalanche/dist/common/jrpcapi.js");
+
+const bintools_1 = __importDefault(__webpack_require__(/*! ../../utils/bintools */ "./node_modules/avalanche/dist/utils/bintools.js"));
+
+const utxos_1 = __webpack_require__(/*! ./utxos */ "./node_modules/avalanche/dist/apis/evm/utxos.js");
+
+const keychain_1 = __webpack_require__(/*! ./keychain */ "./node_modules/avalanche/dist/apis/evm/keychain.js");
+
+const constants_1 = __webpack_require__(/*! ../../utils/constants */ "./node_modules/avalanche/dist/utils/constants.js");
+
+const tx_1 = __webpack_require__(/*! ./tx */ "./node_modules/avalanche/dist/apis/evm/tx.js");
+
+const constants_2 = __webpack_require__(/*! ./constants */ "./node_modules/avalanche/dist/apis/evm/constants.js");
+
+const inputs_1 = __webpack_require__(/*! ./inputs */ "./node_modules/avalanche/dist/apis/evm/inputs.js");
+
+const outputs_1 = __webpack_require__(/*! ./outputs */ "./node_modules/avalanche/dist/apis/evm/outputs.js");
+
+const exporttx_1 = __webpack_require__(/*! ./exporttx */ "./node_modules/avalanche/dist/apis/evm/exporttx.js");
+/**
+ * @ignore
+ */
+
+
+const bintools = bintools_1.default.getInstance();
+/**
+ * Class for interacting with a node's EVMAPI
+ *
+ * @category RPCAPIs
+ *
+ * @remarks This extends the [[JRPCAPI]] class. This class should not be directly called. Instead, use the [[Avalanche.addAPI]] function to register this interface with Avalanche.
+ */
+
+class EVMAPI extends jrpcapi_1.JRPCAPI {
+  /**
+   * This class should not be instantiated directly.
+   * Instead use the [[Avalanche.addAPI]] method.
+   *
+   * @param core A reference to the Avalanche class
+   * @param baseurl Defaults to the string "/ext/bc/C/avax" as the path to blockchain's baseurl
+   * @param blockchainID The Blockchain's ID. Defaults to an empty string: ''
+   */
+  constructor(core, baseurl = '/ext/bc/C/avax', blockchainID = '') {
+    super(core, baseurl);
+    /**
+     * @ignore
+     */
+
+    this.keychain = new keychain_1.KeyChain('', '');
+    this.blockchainID = '';
+    this.blockchainAlias = undefined;
+    this.AVAXAssetID = undefined;
+    this.txFee = undefined;
+    /**
+     * Gets the alias for the blockchainID if it exists, otherwise returns `undefined`.
+     *
+     * @returns The alias for the blockchainID
+     */
+
+    this.getBlockchainAlias = () => {
+      if (typeof this.blockchainAlias === "undefined") {
+        const netID = this.core.getNetworkID();
+
+        if (netID in constants_1.Defaults.network && this.blockchainID in constants_1.Defaults.network[netID]) {
+          this.blockchainAlias = constants_1.Defaults.network[netID][this.blockchainID].alias;
+          return this.blockchainAlias;
+        } else {
+          /* istanbul ignore next */
+          return undefined;
+        }
+      }
+
+      return this.blockchainAlias;
+    };
+    /**
+     * Sets the alias for the blockchainID.
+     *
+     * @param alias The alias for the blockchainID.
+     *
+     */
+
+
+    this.setBlockchainAlias = alias => {
+      this.blockchainAlias = alias;
+      /* istanbul ignore next */
+
+      return undefined;
+    };
+    /**
+     * Gets the blockchainID and returns it.
+     *
+     * @returns The blockchainID
+     */
+
+
+    this.getBlockchainID = () => this.blockchainID;
+    /**
+     * Refresh blockchainID, and if a blockchainID is passed in, use that.
+     *
+     * @param Optional. BlockchainID to assign, if none, uses the default based on networkID.
+     *
+     * @returns A boolean if the blockchainID was successfully refreshed.
+     */
+
+
+    this.refreshBlockchainID = (blockchainID = undefined) => {
+      const netID = this.core.getNetworkID();
+
+      if (typeof blockchainID === 'undefined' && typeof constants_1.Defaults.network[netID] !== "undefined") {
+        this.blockchainID = constants_1.Defaults.network[netID].C.blockchainID; //default to C-Chain
+
+        return true;
+      }
+
+      if (typeof blockchainID === 'string') {
+        this.blockchainID = blockchainID;
+        return true;
+      }
+
+      return false;
+    };
+    /**
+     * Takes an address string and returns its {@link https://github.com/feross/buffer|Buffer} representation if valid.
+     *
+     * @returns A {@link https://github.com/feross/buffer|Buffer} for the address if valid, undefined if not valid.
+     */
+
+
+    this.parseAddress = addr => {
+      const alias = this.getBlockchainAlias();
+      const blockchainID = this.getBlockchainID();
+      return bintools.parseAddress(addr, blockchainID, alias, constants_2.EVMConstants.ADDRESSLENGTH);
+    };
+
+    this.addressFromBuffer = address => {
+      const chainID = this.getBlockchainAlias() ? this.getBlockchainAlias() : this.getBlockchainID();
+      return bintools.addressToString(this.core.getHRP(), chainID, address);
+    };
+    /**
+       * Retrieves an assets name and symbol.
+       *
+       * @param assetID Either a {@link https://github.com/feross/buffer|Buffer} or an b58 serialized string for the AssetID or its alias.
+       *
+       * @returns Returns a Promise<Asset> with keys "name", "symbol", "assetID" and "denomination".
+       */
+
+
+    this.getAssetDescription = assetID => __awaiter(this, void 0, void 0, function* () {
+      let asset;
+
+      if (typeof assetID !== 'string') {
+        asset = bintools.cb58Encode(assetID);
+      } else {
+        asset = assetID;
+      }
+
+      const params = {
+        assetID: asset
+      };
+      const tmpBaseURL = this.getBaseURL(); // set base url to get asset description
+
+      this.setBaseURL("/ext/bc/X");
+      const response = yield this.callMethod('avm.getAssetDescription', params); // set base url back what it originally was
+
+      this.setBaseURL(tmpBaseURL);
+      return {
+        name: response.data.result.name,
+        symbol: response.data.result.symbol,
+        assetID: bintools.cb58Decode(response.data.result.assetID),
+        denomination: parseInt(response.data.result.denomination, 10)
+      };
+    });
+    /**
+     * Fetches the AVAX AssetID and returns it in a Promise.
+     *
+     * @param refresh This function caches the response. Refresh = true will bust the cache.
+     *
+     * @returns The the provided string representing the AVAX AssetID
+     */
+
+
+    this.getAVAXAssetID = (refresh = false) => __awaiter(this, void 0, void 0, function* () {
+      if (typeof this.AVAXAssetID === 'undefined' || refresh) {
+        const asset = yield this.getAssetDescription(constants_1.PrimaryAssetAlias);
+        this.AVAXAssetID = asset.assetID;
+      }
+
+      return this.AVAXAssetID;
+    });
+    /**
+     * Overrides the defaults and sets the cache to a specific AVAX AssetID
+     *
+     * @param avaxAssetID A cb58 string or Buffer representing the AVAX AssetID
+     *
+     * @returns The the provided string representing the AVAX AssetID
+     */
+
+
+    this.setAVAXAssetID = avaxAssetID => {
+      if (typeof avaxAssetID === "string") {
+        avaxAssetID = bintools.cb58Decode(avaxAssetID);
+      }
+
+      this.AVAXAssetID = avaxAssetID;
+    };
+    /**
+     * Gets the default tx fee for this chain.
+     *
+     * @returns The default tx fee as a {@link https://github.com/indutny/bn.js/|BN}
+     */
+
+
+    this.getDefaultTxFee = () => {
+      return this.core.getNetworkID() in constants_1.Defaults.network ? new bn_js_1.default(constants_1.Defaults.network[this.core.getNetworkID()]["C"]["txFee"]) : new bn_js_1.default(0);
+    };
+    /**
+     * Gets the tx fee for this chain.
+     *
+     * @returns The tx fee as a {@link https://github.com/indutny/bn.js/|BN}
+     */
+
+
+    this.getTxFee = () => {
+      if (typeof this.txFee === "undefined") {
+        this.txFee = this.getDefaultTxFee();
+      }
+
+      return this.txFee;
+    };
+    /**
+     * Send ANT (Avalanche Native Token) assets including AVAX from the C-Chain to an account on the X-Chain.
+      *
+      * After calling this method, you must call the X-Chain’s import method to complete the transfer.
+      *
+      * @param username The Keystore user that controls the X-Chain account specified in `to`
+      * @param password The password of the Keystore user
+      * @param to The account on the X-Chain to send the AVAX to.
+      * @param amount Amount of asset to export as a {@link https://github.com/indutny/bn.js/|BN}
+      * @param assetID The asset id which is being sent
+      *
+      * @returns String representing the transaction id
+      */
+
+
+    this.export = (username, password, to, amount, assetID) => __awaiter(this, void 0, void 0, function* () {
+      const params = {
+        to,
+        amount: amount.toString(10),
+        username,
+        password,
+        assetID
+      };
+      return this.callMethod('avax.export', params).then(response => response.data.result.txID);
+    });
+    /**
+     * Send AVAX from the C-Chain to an account on the X-Chain.
+      *
+      * After calling this method, you must call the X-Chain’s importAVAX method to complete the transfer.
+      *
+      * @param username The Keystore user that controls the X-Chain account specified in `to`
+      * @param password The password of the Keystore user
+      * @param to The account on the X-Chain to send the AVAX to.
+      * @param amount Amount of AVAX to export as a {@link https://github.com/indutny/bn.js/|BN}
+      *
+      * @returns String representing the transaction id
+      */
+
+
+    this.exportAVAX = (username, password, to, amount) => __awaiter(this, void 0, void 0, function* () {
+      const params = {
+        to,
+        amount: amount.toString(10),
+        username,
+        password
+      };
+      return this.callMethod('avax.exportAVAX', params).then(response => response.data.result.txID);
+    });
+    /**
+     * Retrieves the UTXOs related to the addresses provided from the node's `getUTXOs` method.
+     *
+     * @param addresses An array of addresses as cb58 strings or addresses as {@link https://github.com/feross/buffer|Buffer}s
+     * @param sourceChain A string for the chain to look for the UTXO's. Default is to use this chain, but if exported UTXOs exist
+     * from other chains, this can used to pull them instead.
+     * @param limit Optional. Returns at most [limit] addresses. If [limit] == 0 or > [maxUTXOsToFetch], fetches up to [maxUTXOsToFetch].
+     * @param startIndex Optional. [StartIndex] defines where to start fetching UTXOs (for pagination.)
+     * UTXOs fetched are from addresses equal to or greater than [StartIndex.Address]
+     * For address [StartIndex.Address], only UTXOs with IDs greater than [StartIndex.Utxo] will be returned.
+     */
+
+
+    this.getUTXOs = (addresses, sourceChain = undefined, limit = 0, startIndex = undefined) => __awaiter(this, void 0, void 0, function* () {
+      if (typeof addresses === "string") {
+        addresses = [addresses];
+      }
+
+      const params = {
+        addresses: addresses,
+        limit
+      };
+
+      if (typeof startIndex !== "undefined" && startIndex) {
+        params.startIndex = startIndex;
+      }
+
+      if (typeof sourceChain !== "undefined") {
+        params.sourceChain = sourceChain;
+      }
+
+      return this.callMethod('avax.getUTXOs', params).then(response => {
+        const utxos = new utxos_1.UTXOSet();
+        let data = response.data.result.utxos;
+        utxos.addArray(data, false);
+        response.data.result.utxos = utxos;
+        return response.data.result;
+      });
+    });
+    /**
+     * Send ANT (Avalanche Native Token) assets including AVAX from an account on the X-Chain to an address on the C-Chain. This transaction
+     * must be signed with the key of the account that the asset is sent from and which pays
+     * the transaction fee.
+     *
+     * @param username The Keystore user that controls the account specified in `to`
+     * @param password The password of the Keystore user
+     * @param to The address of the account the asset is sent to.
+     * @param sourceChain The chainID where the funds are coming from. Ex: "X"
+     *
+     * @returns Promise for a string for the transaction, which should be sent to the network
+     * by calling issueTx.
+     */
+
+
+    this.import = (username, password, to, sourceChain) => __awaiter(this, void 0, void 0, function* () {
+      const params = {
+        to,
+        sourceChain,
+        username,
+        password
+      };
+      return this.callMethod('avax.import', params).then(response => response.data.result.txID);
+    });
+    /**
+     * Send AVAX from an account on the X-Chain to an address on the C-Chain. This transaction
+     * must be signed with the key of the account that the AVAX is sent from and which pays
+     * the transaction fee.
+     *
+     * @param username The Keystore user that controls the account specified in `to`
+     * @param password The password of the Keystore user
+     * @param to The address of the account the AVAX is sent to. This must be the same as the to
+     * argument in the corresponding call to the X-Chain’s exportAVAX
+     * @param sourceChain The chainID where the funds are coming from.
+     *
+     * @returns Promise for a string for the transaction, which should be sent to the network
+     * by calling issueTx.
+     */
+
+
+    this.importAVAX = (username, password, to, sourceChain) => __awaiter(this, void 0, void 0, function* () {
+      const params = {
+        to,
+        sourceChain,
+        username,
+        password
+      };
+      return this.callMethod('avax.importAVAX', params).then(response => response.data.result.txID);
+    });
+    /**
+     * Give a user control over an address by providing the private key that controls the address.
+     *
+     * @param username The name of the user to store the private key
+     * @param password The password that unlocks the user
+     * @param privateKey A string representing the private key in the vm's format
+     *
+     * @returns The address for the imported private key.
+     */
+
+
+    this.importKey = (username, password, privateKey) => __awaiter(this, void 0, void 0, function* () {
+      const params = {
+        username,
+        password,
+        privateKey
+      };
+      return this.callMethod('avax.importKey', params).then(response => response.data.result.address);
+    });
+    /**
+     * Calls the node's issueTx method from the API and returns the resulting transaction ID as a string.
+     *
+     * @param tx A string, {@link https://github.com/feross/buffer|Buffer}, or [[Tx]] representing a transaction
+     *
+     * @returns A Promise<string> representing the transaction ID of the posted transaction.
+     */
+
+
+    this.issueTx = tx => __awaiter(this, void 0, void 0, function* () {
+      let Transaction = '';
+
+      if (typeof tx === 'string') {
+        Transaction = tx;
+      } else if (tx instanceof buffer_1.Buffer) {
+        const txobj = new tx_1.Tx();
+        txobj.fromBuffer(tx);
+        Transaction = txobj.toString();
+      } else if (tx instanceof tx_1.Tx) {
+        Transaction = tx.toString();
+      } else {
+        /* istanbul ignore next */
+        throw new Error('Error - avax.issueTx: provided tx is not expected type of string, Buffer, or Tx');
+      }
+
+      const params = {
+        tx: Transaction.toString()
+      };
+      return this.callMethod('avax.issueTx', params).then(response => response.data.result.txID);
+    });
+    /**
+     * Exports the private key for an address.
+     *
+     * @param username The name of the user with the private key
+     * @param password The password used to decrypt the private key
+     * @param address The address whose private key should be exported
+     *
+     * @returns Promise with the decrypted private key as store in the database
+     */
+
+
+    this.exportKey = (username, password, address) => __awaiter(this, void 0, void 0, function* () {
+      const params = {
+        username,
+        password,
+        address
+      };
+      return this.callMethod('avax.exportKey', params).then(response => response.data.result.privateKey);
+    });
+    /**
+     * Helper function which creates an unsigned Import Tx. For more granular control, you may create your own
+     * [[UnsignedTx]] manually (with their corresponding [[TransferableInput]]s, [[TransferableOutput]]s).
+     *
+     * @param utxoset A set of UTXOs that the transaction is built on
+     * @param toAddress The address to send the funds
+     * @param ownerAddresses The addresses being used to import
+     * @param sourceChain The chainid for where the import is coming from
+     * @param fromAddresses The addresses being used to send the funds from the UTXOs provided
+     *
+     * @returns An unsigned transaction ([[UnsignedTx]]) which contains a [[ImportTx]].
+     *
+     * @remarks
+     * This helper exists because the endpoint API should be the primary point of entry for most functionality.
+     */
+
+
+    this.buildImportTx = (utxoset, toAddress, ownerAddresses, sourceChain, fromAddresses) => __awaiter(this, void 0, void 0, function* () {
+      const from = this._cleanAddressArray(fromAddresses, 'buildImportTx').map(a => bintools.stringToAddress(a));
+
+      let srcChain = undefined;
+
+      if (typeof sourceChain === "string") {
+        // if there is a sourceChain passed in and it's a string then save the string value and cast the original
+        // variable from a string to a Buffer
+        srcChain = sourceChain;
+        sourceChain = bintools.cb58Decode(sourceChain);
+      } else if (typeof sourceChain === "undefined" || !(sourceChain instanceof buffer_1.Buffer)) {
+        // if there is no sourceChain passed in or the sourceChain is any data type other than a Buffer then throw an error
+        throw new Error('Error - EVMAPI.buildImportTx: sourceChain is undefined or invalid sourceChain type.');
+      }
+
+      const utxoResponse = yield this.getUTXOs(ownerAddresses, srcChain, 0, undefined);
+      const atomicUTXOs = utxoResponse.utxos;
+      const avaxAssetID = yield this.getAVAXAssetID();
+      const atomics = atomicUTXOs.getAllUTXOs();
+
+      if (atomics.length === 0) {
+        throw new Error(`Error - EVMAPI.buildImportTx: no atomic utxos to import from ${srcChain} using addresses: ${ownerAddresses.join(', ')}`);
+      }
+
+      const builtUnsignedTx = utxoset.buildImportTx(this.core.getNetworkID(), bintools.cb58Decode(this.blockchainID), [toAddress], from, atomics, sourceChain, this.getTxFee(), avaxAssetID);
+      return builtUnsignedTx;
+    });
+    /**
+     * Helper function which creates an unsigned Export Tx. For more granular control, you may create your own
+     * [[UnsignedTx]] manually (with their corresponding [[TransferableInput]]s, [[TransferableOutput]]s).
+     *
+     * @param amount The amount being exported as a {@link https://github.com/indutny/bn.js/|BN}
+     * @param assetID The asset id which is being sent
+     * @param destinationChain The chainid for where the assets will be sent.
+     * @param toAddresses The addresses to send the funds
+     * @param fromAddresses The addresses being used to send the funds from the UTXOs provided
+     * @param changeAddresses The addresses that can spend the change remaining from the spent UTXOs
+     * @param asOf Optional. The timestamp to verify the transaction against as a {@link https://github.com/indutny/bn.js/|BN}
+     * @param locktime Optional. The locktime field created in the resulting outputs
+     * @param threshold Optional. The number of signatures required to spend the funds in the resultant UTXO
+     *
+     * @returns An unsigned transaction ([[UnsignedTx]]) which contains an [[ExportTx]].
+     */
+
+
+    this.buildExportTx = (amount, assetID, destinationChain, fromAddressHex, fromAddressBech, toAddresses, nonce = 0, locktime = new bn_js_1.default(0), threshold = 1) => __awaiter(this, void 0, void 0, function* () {
+      let prefixes = {};
+      toAddresses.map(address => {
+        prefixes[address.split("-")[0]] = true;
+      });
+
+      if (Object.keys(prefixes).length !== 1) {
+        throw new Error("Error - EVMAPI.buildExportTx: To addresses must have the same chainID prefix.");
+      }
+
+      if (typeof destinationChain === "undefined") {
+        throw new Error("Error - EVMAPI.buildExportTx: Destination ChainID is undefined.");
+      } else if (typeof destinationChain === "string") {
+        destinationChain = bintools.cb58Decode(destinationChain);
+      } else if (!(destinationChain instanceof buffer_1.Buffer)) {
+        throw new Error(`Error - EVMAPI.buildExportTx: Invalid destinationChain type: ${typeof destinationChain}`);
+      }
+
+      if (destinationChain.length !== 32) {
+        throw new Error("Error - EVMAPI.buildExportTx: Destination ChainID must be 32 bytes in length.");
+      }
+
+      const fee = this.getTxFee();
+      const assetDescription = yield this.getAssetDescription("AVAX");
+      const evmInputs = [];
+
+      if (bintools.cb58Encode(assetDescription.assetID) === assetID) {
+        const evmInput = new inputs_1.EVMInput(fromAddressHex, amount.add(fee), assetID, nonce);
+        evmInput.addSignatureIdx(0, bintools.stringToAddress(fromAddressBech));
+        evmInputs.push(evmInput);
+      } else {
+        // if asset id isn't AVAX asset id then create 2 inputs
+        // first input will be AVAX and will be for the amount of the fee
+        // second input will be the ANT
+        const evmAVAXInput = new inputs_1.EVMInput(fromAddressHex, fee, assetDescription.assetID, nonce);
+        evmAVAXInput.addSignatureIdx(0, bintools.stringToAddress(fromAddressBech));
+        evmInputs.push(evmAVAXInput);
+        const evmANTInput = new inputs_1.EVMInput(fromAddressHex, amount, assetID, nonce);
+        evmANTInput.addSignatureIdx(0, bintools.stringToAddress(fromAddressBech));
+        evmInputs.push(evmANTInput);
+      }
+
+      const to = [];
+      toAddresses.map(address => {
+        to.push(bintools.stringToAddress(address));
+      });
+      let exportedOuts = [];
+      const secpTransferOutput = new outputs_1.SECPTransferOutput(amount, to, locktime, threshold);
+      const transferableOutput = new outputs_1.TransferableOutput(bintools.cb58Decode(assetID), secpTransferOutput);
+      exportedOuts.push(transferableOutput); // lexicographically sort array
+
+      exportedOuts = exportedOuts.sort(outputs_1.TransferableOutput.comparator());
+      const exportTx = new exporttx_1.ExportTx(this.core.getNetworkID(), bintools.cb58Decode(this.blockchainID), destinationChain, evmInputs, exportedOuts);
+      const unsignedTx = new tx_1.UnsignedTx(exportTx);
+      return unsignedTx;
+    });
+    /**
+     * Gets a reference to the keychain for this class.
+     *
+     * @returns The instance of [[KeyChain]] for this class
+     */
+
+
+    this.keyChain = () => this.keychain;
+
+    this.blockchainID = blockchainID;
+    const netID = core.getNetworkID();
+
+    if (netID in constants_1.Defaults.network && blockchainID in constants_1.Defaults.network[netID]) {
+      const {
+        alias
+      } = constants_1.Defaults.network[netID][blockchainID];
+      this.keychain = new keychain_1.KeyChain(this.core.getHRP(), alias);
+    } else {
+      this.keychain = new keychain_1.KeyChain(this.core.getHRP(), blockchainID);
+    }
+  }
+  /**
+   * @ignore
+   */
+
+
+  _cleanAddressArray(addresses, caller) {
+    const addrs = [];
+    const chainid = this.getBlockchainAlias() ? this.getBlockchainAlias() : this.getBlockchainID();
+
+    if (addresses && addresses.length > 0) {
+      addresses.forEach(address => {
+        if (typeof address === 'string') {
+          if (typeof this.parseAddress(address) === 'undefined') {
+            /* istanbul ignore next */
+            throw new Error(`Error - EVMAPI.${caller}: Invalid address format ${address}`);
+          }
+
+          addrs.push(address);
+        } else {
+          addrs.push(bintools.addressToString(this.core.getHRP(), chainid, address));
+        }
+      });
+    }
+
+    return addrs;
+  }
+
+}
+
+exports.EVMAPI = EVMAPI;
+
+/***/ }),
+
+/***/ "./node_modules/avalanche/dist/apis/evm/basetx.js":
+/*!********************************************************!*\
+  !*** ./node_modules/avalanche/dist/apis/evm/basetx.js ***!
+  \********************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+/**
+ * @packageDocumentation
+ * @module API-EVM-BaseTx
+ */
+
+var __importDefault = this && this.__importDefault || function (mod) {
+  return mod && mod.__esModule ? mod : {
+    "default": mod
+  };
+};
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.EVMBaseTx = void 0;
+
+const buffer_1 = __webpack_require__(/*! buffer/ */ "./node_modules/node-libs-browser/node_modules/buffer/index.js");
+
+const bintools_1 = __importDefault(__webpack_require__(/*! ../../utils/bintools */ "./node_modules/avalanche/dist/utils/bintools.js"));
+
+const evmtx_1 = __webpack_require__(/*! ../../common/evmtx */ "./node_modules/avalanche/dist/common/evmtx.js");
+
+const constants_1 = __webpack_require__(/*! ../../utils/constants */ "./node_modules/avalanche/dist/utils/constants.js");
+
+const tx_1 = __webpack_require__(/*! ./tx */ "./node_modules/avalanche/dist/apis/evm/tx.js");
+/**
+ * @ignore
+ */
+
+
+const bintools = bintools_1.default.getInstance();
+/**
+ * Class representing a base for all transactions.
+ */
+
+class EVMBaseTx extends evmtx_1.EVMStandardBaseTx {
+  /**
+   * Class representing an EVMBaseTx which is the foundation for all EVM transactions.
+   *
+   * @param networkID Optional networkID, [[DefaultNetworkID]]
+   * @param blockchainID Optional blockchainID, default Buffer.alloc(32, 16)
+   */
+  constructor(networkID = constants_1.DefaultNetworkID, blockchainID = buffer_1.Buffer.alloc(32, 16)) {
+    super(networkID, blockchainID);
+    this._typeName = "BaseTx";
+    this._typeID = undefined;
+    /**
+     * Returns the id of the [[BaseTx]]
+     */
+
+    this.getTxType = () => {
+      return this._typeID;
+    };
+  } //serialize is inherited
+
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+  }
+  /**
+   * Takes a {@link https://github.com/feross/buffer|Buffer} containing an [[BaseTx]], parses it, populates the class, and returns the length of the BaseTx in bytes.
+   *
+   * @param bytes A {@link https://github.com/feross/buffer|Buffer} containing a raw [[BaseTx]]
+   *
+   * @returns The length of the raw [[BaseTx]]
+   *
+   * @remarks assume not-checksummed
+   */
+
+
+  fromBuffer(bytes, offset = 0) {
+    this.networkid = bintools.copyFrom(bytes, offset, offset + 4);
+    offset += 4;
+    this.blockchainid = bintools.copyFrom(bytes, offset, offset + 32);
+    offset += 32;
+    return offset;
+  }
+  /**
+   * Takes the bytes of an [[UnsignedTx]] and returns an array of [[Credential]]s
+   *
+   * @param msg A Buffer for the [[UnsignedTx]]
+   * @param kc An [[KeyChain]] used in signing
+   *
+   * @returns An array of [[Credential]]s
+   */
+
+
+  sign(msg, kc) {
+    const sigs = [];
+    return sigs;
+  }
+
+  clone() {
+    const newEVMBaseTx = new EVMBaseTx();
+    newEVMBaseTx.fromBuffer(this.toBuffer());
+    return newEVMBaseTx;
+  }
+
+  create(...args) {
+    return new EVMBaseTx(...args);
+  }
+
+  select(id, ...args) {
+    const newEVMBaseTx = tx_1.SelectTxClass(id, ...args);
+    return newEVMBaseTx;
+  }
+
+}
+
+exports.EVMBaseTx = EVMBaseTx;
+
+/***/ }),
+
+/***/ "./node_modules/avalanche/dist/apis/evm/constants.js":
+/*!***********************************************************!*\
+  !*** ./node_modules/avalanche/dist/apis/evm/constants.js ***!
+  \***********************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+/**
+ * @packageDocumentation
+ * @module API-EVM-Constants
+ */
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.EVMConstants = void 0;
+
+class EVMConstants {}
+
+exports.EVMConstants = EVMConstants;
+EVMConstants.SECPCREDENTIAL = 9;
+EVMConstants.IMPORTTX = 0;
+EVMConstants.EXPORTTX = 1;
+EVMConstants.SECPINPUTID = 5;
+EVMConstants.ASSETIDLEN = 32;
+EVMConstants.SECPXFEROUTPUTID = 7;
+EVMConstants.LATESTCODEC = 0;
+EVMConstants.ADDRESSLENGTH = 20;
+
+/***/ }),
+
+/***/ "./node_modules/avalanche/dist/apis/evm/credentials.js":
+/*!*************************************************************!*\
+  !*** ./node_modules/avalanche/dist/apis/evm/credentials.js ***!
+  \*************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+/**
+ * @packageDocumentation
+ * @module API-EVM-Credentials
+ */
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.SECPCredential = exports.SelectCredentialClass = void 0;
+
+const constants_1 = __webpack_require__(/*! ./constants */ "./node_modules/avalanche/dist/apis/evm/constants.js");
+
+const credentials_1 = __webpack_require__(/*! ../../common/credentials */ "./node_modules/avalanche/dist/common/credentials.js");
+/**
+ * Takes a buffer representing the credential and returns the proper [[Credential]] instance.
+ *
+ * @param credid A number representing the credential ID parsed prior to the bytes passed in
+ *
+ * @returns An instance of an [[Credential]]-extended class.
+ */
+
+
+exports.SelectCredentialClass = (credid, ...args) => {
+  if (credid === constants_1.EVMConstants.SECPCREDENTIAL) {
+    return new SECPCredential(...args);
+  }
+  /* istanbul ignore next */
+
+
+  throw new Error(`Error - SelectCredentialClass: unknown credid ${credid}`);
+};
+
+class SECPCredential extends credentials_1.Credential {
+  constructor() {
+    super(...arguments);
+    this._typeName = "SECPCredential";
+    this._typeID = constants_1.EVMConstants.SECPCREDENTIAL;
+  } //serialize and deserialize both are inherited
+
+
+  getCredentialID() {
+    return this._typeID;
+  }
+
+  clone() {
+    let newbase = new SECPCredential();
+    newbase.fromBuffer(this.toBuffer());
+    return newbase;
+  }
+
+  create(...args) {
+    return new SECPCredential(...args);
+  }
+
+  select(id, ...args) {
+    let credential = exports.SelectCredentialClass(id, ...args);
+    return credential;
+  }
+
+}
+
+exports.SECPCredential = SECPCredential;
+
+/***/ }),
+
+/***/ "./node_modules/avalanche/dist/apis/evm/exporttx.js":
+/*!**********************************************************!*\
+  !*** ./node_modules/avalanche/dist/apis/evm/exporttx.js ***!
+  \**********************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+/**
+ * @packageDocumentation
+ * @module API-EVM-ExportTx
+ */
+
+var __importDefault = this && this.__importDefault || function (mod) {
+  return mod && mod.__esModule ? mod : {
+    "default": mod
+  };
+};
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.ExportTx = void 0;
+
+const buffer_1 = __webpack_require__(/*! buffer/ */ "./node_modules/node-libs-browser/node_modules/buffer/index.js");
+
+const bintools_1 = __importDefault(__webpack_require__(/*! ../../utils/bintools */ "./node_modules/avalanche/dist/utils/bintools.js"));
+
+const constants_1 = __webpack_require__(/*! ./constants */ "./node_modules/avalanche/dist/apis/evm/constants.js");
+
+const basetx_1 = __webpack_require__(/*! ./basetx */ "./node_modules/avalanche/dist/apis/evm/basetx.js");
+
+const credentials_1 = __webpack_require__(/*! ./credentials */ "./node_modules/avalanche/dist/apis/evm/credentials.js");
+
+const credentials_2 = __webpack_require__(/*! ../../common/credentials */ "./node_modules/avalanche/dist/common/credentials.js");
+
+const inputs_1 = __webpack_require__(/*! ./inputs */ "./node_modules/avalanche/dist/apis/evm/inputs.js");
+
+const serialization_1 = __webpack_require__(/*! ../../utils/serialization */ "./node_modules/avalanche/dist/utils/serialization.js");
+
+const outputs_1 = __webpack_require__(/*! ./outputs */ "./node_modules/avalanche/dist/apis/evm/outputs.js");
+/**
+ * @ignore
+ */
+
+
+const bintools = bintools_1.default.getInstance();
+const serializer = serialization_1.Serialization.getInstance();
+
+class ExportTx extends basetx_1.EVMBaseTx {
+  /**
+   * Class representing a ExportTx.
+   *
+   * @param networkid Optional networkid
+   * @param blockchainid Optional blockchainid, default Buffer.alloc(32, 16)
+   * @param destinationChain Optional destinationChain, default Buffer.alloc(32, 16)
+   * @param inputs Optional array of the [[EVMInputs]]s
+   * @param exportedOutputs Optional array of the [[EVMOutputs]]s
+   */
+  constructor(networkid = undefined, blockchainid = buffer_1.Buffer.alloc(32, 16), destinationChain = buffer_1.Buffer.alloc(32, 16), inputs = undefined, exportedOutputs = undefined) {
+    super(networkid, blockchainid);
+    this._typeName = "ExportTx";
+    this._typeID = constants_1.EVMConstants.EXPORTTX;
+    this.destinationChain = buffer_1.Buffer.alloc(32);
+    this.numInputs = buffer_1.Buffer.alloc(4);
+    this.inputs = [];
+    this.numExportedOutputs = buffer_1.Buffer.alloc(4);
+    this.exportedOutputs = [];
+    /**
+     * Returns the destinationChain of the input as {@link https://github.com/feross/buffer|Buffer}
+     */
+
+    this.getDestinationChain = () => this.destinationChain;
+    /**
+     * Returns the inputs as an array of [[EVMInputs]]
+     */
+
+
+    this.getInputs = () => this.inputs;
+    /**
+     * Returns the outs as an array of [[EVMOutputs]]
+     */
+
+
+    this.getExportedOutputs = () => this.exportedOutputs;
+
+    this.destinationChain = destinationChain;
+
+    if (typeof inputs !== 'undefined' && Array.isArray(inputs)) {
+      inputs.forEach(input => {
+        if (!(input instanceof inputs_1.EVMInput)) {
+          throw new Error("Error - ExportTx.constructor: invalid EVMInput in array parameter 'inputs'");
+        }
+      });
+      this.inputs = inputs;
+    }
+
+    if (typeof exportedOutputs !== 'undefined' && Array.isArray(exportedOutputs)) {
+      exportedOutputs.forEach(exportedOutput => {
+        if (!(exportedOutput instanceof outputs_1.TransferableOutput)) {
+          throw new Error("Error - ExportTx.constructor: TransferableOutput EVMInput in array parameter 'exportedOutputs'");
+        }
+      });
+      this.exportedOutputs = exportedOutputs;
+    }
+  }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "destinationChain": serializer.encoder(this.destinationChain, encoding, "Buffer", "cb58"),
+      "exportedOutputs": this.exportedOutputs.map(i => i.serialize(encoding))
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.destinationChain = serializer.decoder(fields["destinationChain"], encoding, "cb58", "Buffer", 32);
+    this.exportedOutputs = fields["exportedOutputs"].map(i => {
+      let eo = new outputs_1.TransferableOutput();
+      eo.deserialize(i, encoding);
+      return eo;
+    });
+    this.numExportedOutputs = buffer_1.Buffer.alloc(4);
+    this.numExportedOutputs.writeUInt32BE(this.exportedOutputs.length, 0);
+  }
+  /**
+   * Returns a {@link https://github.com/feross/buffer|Buffer} representation of the [[ExportTx]].
+   */
+
+
+  toBuffer() {
+    if (typeof this.destinationChain === "undefined") {
+      throw new Error("ExportTx.toBuffer -- this.destinationChain is undefined");
+    }
+
+    this.numInputs.writeUInt32BE(this.inputs.length, 0);
+    this.numExportedOutputs.writeUInt32BE(this.exportedOutputs.length, 0);
+    let barr = [super.toBuffer(), this.destinationChain, this.numInputs];
+    let bsize = super.toBuffer().length + this.destinationChain.length + this.numInputs.length;
+    this.inputs.forEach(importIn => {
+      bsize += importIn.toBuffer().length;
+      barr.push(importIn.toBuffer());
+    });
+    bsize += this.numExportedOutputs.length;
+    barr.push(this.numExportedOutputs);
+    this.exportedOutputs.forEach(out => {
+      bsize += out.toBuffer().length;
+      barr.push(out.toBuffer());
+    });
+    return buffer_1.Buffer.concat(barr, bsize);
+  }
+  /**
+   * Decodes the [[ExportTx]] as a {@link https://github.com/feross/buffer|Buffer} and returns the size.
+   */
+
+
+  fromBuffer(bytes, offset = 0) {
+    offset = super.fromBuffer(bytes, offset);
+    this.destinationChain = bintools.copyFrom(bytes, offset, offset + 32);
+    offset += 32;
+    this.numInputs = bintools.copyFrom(bytes, offset, offset + 4);
+    offset += 4;
+    const numInputs = this.numInputs.readUInt32BE(0);
+
+    for (let i = 0; i < numInputs; i++) {
+      const anIn = new inputs_1.EVMInput();
+      offset = anIn.fromBuffer(bytes, offset);
+      this.inputs.push(anIn);
+    }
+
+    this.numExportedOutputs = bintools.copyFrom(bytes, offset, offset + 4);
+    offset += 4;
+    const numExportedOutputs = this.numExportedOutputs.readUInt32BE(0);
+
+    for (let i = 0; i < numExportedOutputs; i++) {
+      const anOut = new outputs_1.TransferableOutput();
+      offset = anOut.fromBuffer(bytes, offset);
+      this.exportedOutputs.push(anOut);
+    }
+
+    return offset;
+  }
+  /**
+   * Returns a base-58 representation of the [[ExportTx]].
+   */
+
+
+  toString() {
+    return bintools.bufferToB58(this.toBuffer());
+  }
+  /**
+   * Takes the bytes of an [[UnsignedTx]] and returns an array of [[Credential]]s
+      *
+      * @param msg A Buffer for the [[UnsignedTx]]
+      * @param kc An [[KeyChain]] used in signing
+      *
+      * @returns An array of [[Credential]]s
+      */
+
+
+  sign(msg, kc) {
+    const sigs = super.sign(msg, kc);
+    this.inputs.forEach(input => {
+      const cred = credentials_1.SelectCredentialClass(input.getCredentialID());
+      const sigidxs = input.getSigIdxs();
+      sigidxs.forEach(sigidx => {
+        const keypair = kc.getKey(sigidx.getSource());
+        const signval = keypair.sign(msg);
+        const sig = new credentials_2.Signature();
+        sig.fromBuffer(signval);
+        cred.addSignature(sig);
+      });
+      sigs.push(cred);
+    });
+    return sigs;
+  }
+
+}
+
+exports.ExportTx = ExportTx;
+
+/***/ }),
+
+/***/ "./node_modules/avalanche/dist/apis/evm/importtx.js":
+/*!**********************************************************!*\
+  !*** ./node_modules/avalanche/dist/apis/evm/importtx.js ***!
+  \**********************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+/**
+ * @packageDocumentation
+ * @module API-EVM-ImportTx
+ */
+
+var __importDefault = this && this.__importDefault || function (mod) {
+  return mod && mod.__esModule ? mod : {
+    "default": mod
+  };
+};
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.ImportTx = void 0;
+
+const buffer_1 = __webpack_require__(/*! buffer/ */ "./node_modules/node-libs-browser/node_modules/buffer/index.js");
+
+const bintools_1 = __importDefault(__webpack_require__(/*! ../../utils/bintools */ "./node_modules/avalanche/dist/utils/bintools.js"));
+
+const constants_1 = __webpack_require__(/*! ./constants */ "./node_modules/avalanche/dist/apis/evm/constants.js");
+
+const outputs_1 = __webpack_require__(/*! ./outputs */ "./node_modules/avalanche/dist/apis/evm/outputs.js");
+
+const inputs_1 = __webpack_require__(/*! ./inputs */ "./node_modules/avalanche/dist/apis/evm/inputs.js");
+
+const basetx_1 = __webpack_require__(/*! ./basetx */ "./node_modules/avalanche/dist/apis/evm/basetx.js");
+
+const credentials_1 = __webpack_require__(/*! ./credentials */ "./node_modules/avalanche/dist/apis/evm/credentials.js");
+
+const credentials_2 = __webpack_require__(/*! ../../common/credentials */ "./node_modules/avalanche/dist/common/credentials.js");
+
+const constants_2 = __webpack_require__(/*! ../../utils/constants */ "./node_modules/avalanche/dist/utils/constants.js");
+
+const serialization_1 = __webpack_require__(/*! ../../utils/serialization */ "./node_modules/avalanche/dist/utils/serialization.js");
+/**
+ * @ignore
+ */
+
+
+const bintools = bintools_1.default.getInstance();
+const serializer = serialization_1.Serialization.getInstance();
+/**
+ * Class representing an unsigned Import transaction.
+ */
+
+class ImportTx extends basetx_1.EVMBaseTx {
+  /**
+   * Class representing an unsigned Import transaction.
+   *
+   * @param networkid Optional networkid, [[DefaultNetworkID]]
+   * @param blockchainid Optional blockchainid, default Buffer.alloc(32, 16)
+   * @param sourceChainid Optional chainid for the source inputs to import. Default platform chainid.
+   * @param importIns Array of [[TransferableInput]]s used in the transaction
+   * @param outs Optional array of the [[EVMOutput]]s
+   */
+  constructor(networkid = constants_2.DefaultNetworkID, blockchainid = buffer_1.Buffer.alloc(32, 16), sourceChainid = buffer_1.Buffer.alloc(32, 16), importIns = undefined, outs = undefined) {
+    super(networkid, blockchainid);
+    this._typeName = "ImportTx";
+    this._typeID = constants_1.EVMConstants.IMPORTTX;
+    this.sourceChain = buffer_1.Buffer.alloc(32);
+    this.numIns = buffer_1.Buffer.alloc(4);
+    this.importIns = [];
+    this.numOuts = buffer_1.Buffer.alloc(4);
+    this.outs = [];
+    /**
+       * Returns the id of the [[ImportTx]]
+       */
+
+    this.getTxType = () => {
+      return this._typeID;
+    };
+    /**
+     * Returns a {@link https://github.com/feross/buffer|Buffer} for the source chainid.
+     */
+
+
+    this.getSourceChain = () => {
+      return this.sourceChain;
+    };
+
+    this.sourceChain = sourceChainid;
+
+    if (typeof importIns !== 'undefined' && Array.isArray(importIns)) {
+      importIns.forEach(importIn => {
+        if (!(importIn instanceof inputs_1.TransferableInput)) {
+          throw new Error("Error - ImportTx.constructor: invalid TransferableInput in array parameter 'importIns'");
+        }
+      });
+      this.importIns = importIns;
+    }
+
+    if (typeof outs !== 'undefined' && Array.isArray(outs)) {
+      outs.forEach(out => {
+        if (!(out instanceof outputs_1.EVMOutput)) {
+          throw new Error("Error - ImportTx.constructor: invalid EVMOutput in array parameter 'outs'");
+        }
+      });
+      this.outs = outs;
+    }
+  }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "sourceChain": serializer.encoder(this.sourceChain, encoding, "Buffer", "cb58"),
+      "importIns": this.importIns.map(i => i.serialize(encoding))
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.sourceChain = serializer.decoder(fields["sourceChain"], encoding, "cb58", "Buffer", 32);
+    this.importIns = fields["importIns"].map(i => {
+      let ii = new inputs_1.TransferableInput();
+      ii.deserialize(i, encoding);
+      return ii;
+    });
+    this.numIns = buffer_1.Buffer.alloc(4);
+    this.numIns.writeUInt32BE(this.importIns.length, 0);
+  }
+  /**
+     * Takes a {@link https://github.com/feross/buffer|Buffer} containing an [[ImportTx]], parses it,
+     * populates the class, and returns the length of the [[ImportTx]] in bytes.
+     *
+     * @param bytes A {@link https://github.com/feross/buffer|Buffer} containing a raw [[ImportTx]]
+     * @param offset A number representing the byte offset. Defaults to 0.
+     *
+     * @returns The length of the raw [[ImportTx]]
+     *
+     * @remarks assume not-checksummed
+     */
+
+
+  fromBuffer(bytes, offset = 0) {
+    offset = super.fromBuffer(bytes, offset);
+    this.sourceChain = bintools.copyFrom(bytes, offset, offset + 32);
+    offset += 32;
+    this.numIns = bintools.copyFrom(bytes, offset, offset + 4);
+    offset += 4;
+    const numIns = this.numIns.readUInt32BE(0);
+
+    for (let i = 0; i < numIns; i++) {
+      const anIn = new inputs_1.TransferableInput();
+      offset = anIn.fromBuffer(bytes, offset);
+      this.importIns.push(anIn);
+    }
+
+    this.numOuts = bintools.copyFrom(bytes, offset, offset + 4);
+    offset += 4;
+    const numOuts = this.numOuts.readUInt32BE(0);
+
+    for (let i = 0; i < numOuts; i++) {
+      const anOut = new outputs_1.EVMOutput();
+      offset = anOut.fromBuffer(bytes, offset);
+      this.outs.push(anOut);
+    }
+
+    return offset;
+  }
+  /**
+   * Returns a {@link https://github.com/feross/buffer|Buffer} representation of the [[ImportTx]].
+   */
+
+
+  toBuffer() {
+    if (typeof this.sourceChain === "undefined") {
+      throw new Error("ImportTx.toBuffer -- this.sourceChain is undefined");
+    }
+
+    this.numIns.writeUInt32BE(this.importIns.length, 0);
+    this.numOuts.writeUInt32BE(this.outs.length, 0);
+    let barr = [super.toBuffer(), this.sourceChain, this.numIns];
+    let bsize = super.toBuffer().length + this.sourceChain.length + this.numIns.length;
+    this.importIns = this.importIns.sort(inputs_1.TransferableInput.comparator());
+    this.importIns.forEach(importIn => {
+      bsize += importIn.toBuffer().length;
+      barr.push(importIn.toBuffer());
+    });
+    bsize += this.numOuts.length;
+    barr.push(this.numOuts);
+    this.outs.forEach(out => {
+      bsize += out.toBuffer().length;
+      barr.push(out.toBuffer());
+    });
+    return buffer_1.Buffer.concat(barr, bsize);
+  }
+  /**
+     * Returns an array of [[TransferableInput]]s in this transaction.
+     */
+
+
+  getImportInputs() {
+    return this.importIns;
+  }
+  /**
+     * Returns an array of [[EVMOutput]]s in this transaction.
+     */
+
+
+  getOuts() {
+    return this.outs;
+  }
+
+  clone() {
+    let newImportTx = new ImportTx();
+    newImportTx.fromBuffer(this.toBuffer());
+    return newImportTx;
+  }
+
+  create(...args) {
+    return new ImportTx(...args);
+  }
+  /**
+     * Takes the bytes of an [[UnsignedTx]] and returns an array of [[Credential]]s
+     *
+     * @param msg A Buffer for the [[UnsignedTx]]
+     * @param kc An [[KeyChain]] used in signing
+     *
+     * @returns An array of [[Credential]]s
+     */
+
+
+  sign(msg, kc) {
+    const sigs = super.sign(msg, kc);
+    this.importIns.forEach(importIn => {
+      const cred = credentials_1.SelectCredentialClass(importIn.getInput().getCredentialID());
+      const sigidxs = importIn.getInput().getSigIdxs();
+      sigidxs.forEach(sigidx => {
+        const keypair = kc.getKey(sigidx.getSource());
+        const signval = keypair.sign(msg);
+        const sig = new credentials_2.Signature();
+        sig.fromBuffer(signval);
+        cred.addSignature(sig);
+      });
+      sigs.push(cred);
+    });
+    return sigs;
+  }
+
+}
+
+exports.ImportTx = ImportTx;
+
+/***/ }),
+
+/***/ "./node_modules/avalanche/dist/apis/evm/index.js":
+/*!*******************************************************!*\
+  !*** ./node_modules/avalanche/dist/apis/evm/index.js ***!
+  \*******************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+var __createBinding = this && this.__createBinding || (Object.create ? function (o, m, k, k2) {
+  if (k2 === undefined) k2 = k;
+  Object.defineProperty(o, k2, {
+    enumerable: true,
+    get: function () {
+      return m[k];
+    }
+  });
+} : function (o, m, k, k2) {
+  if (k2 === undefined) k2 = k;
+  o[k2] = m[k];
+});
+
+var __exportStar = this && this.__exportStar || function (m, exports) {
+  for (var p in m) if (p !== "default" && !exports.hasOwnProperty(p)) __createBinding(exports, m, p);
+};
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+
+__exportStar(__webpack_require__(/*! ./api */ "./node_modules/avalanche/dist/apis/evm/api.js"), exports); // export * from './basetx';
+
+
+__exportStar(__webpack_require__(/*! ./constants */ "./node_modules/avalanche/dist/apis/evm/constants.js"), exports);
+
+__exportStar(__webpack_require__(/*! ./credentials */ "./node_modules/avalanche/dist/apis/evm/credentials.js"), exports);
+
+__exportStar(__webpack_require__(/*! ./inputs */ "./node_modules/avalanche/dist/apis/evm/inputs.js"), exports);
+
+__exportStar(__webpack_require__(/*! ./exporttx */ "./node_modules/avalanche/dist/apis/evm/exporttx.js"), exports);
+
+__exportStar(__webpack_require__(/*! ./importtx */ "./node_modules/avalanche/dist/apis/evm/importtx.js"), exports);
+
+__exportStar(__webpack_require__(/*! ./keychain */ "./node_modules/avalanche/dist/apis/evm/keychain.js"), exports);
+
+__exportStar(__webpack_require__(/*! ./outputs */ "./node_modules/avalanche/dist/apis/evm/outputs.js"), exports);
+
+__exportStar(__webpack_require__(/*! ./tx */ "./node_modules/avalanche/dist/apis/evm/tx.js"), exports);
+
+__exportStar(__webpack_require__(/*! ./utxos */ "./node_modules/avalanche/dist/apis/evm/utxos.js"), exports);
+
+/***/ }),
+
+/***/ "./node_modules/avalanche/dist/apis/evm/inputs.js":
+/*!********************************************************!*\
+  !*** ./node_modules/avalanche/dist/apis/evm/inputs.js ***!
+  \********************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+var __importDefault = this && this.__importDefault || function (mod) {
+  return mod && mod.__esModule ? mod : {
+    "default": mod
+  };
+};
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.EVMInput = exports.SECPTransferInput = exports.AmountInput = exports.TransferableInput = exports.SelectInputClass = void 0;
+/**
+ * @packageDocumentation
+ * @module API-EVM-Inputs
+ */
+
+const buffer_1 = __webpack_require__(/*! buffer/ */ "./node_modules/node-libs-browser/node_modules/buffer/index.js");
+
+const bintools_1 = __importDefault(__webpack_require__(/*! ../../utils/bintools */ "./node_modules/avalanche/dist/utils/bintools.js"));
+
+const constants_1 = __webpack_require__(/*! ./constants */ "./node_modules/avalanche/dist/apis/evm/constants.js");
+
+const input_1 = __webpack_require__(/*! ../../common/input */ "./node_modules/avalanche/dist/common/input.js");
+
+const outputs_1 = __webpack_require__(/*! ./outputs */ "./node_modules/avalanche/dist/apis/evm/outputs.js");
+
+const bn_js_1 = __importDefault(__webpack_require__(/*! bn.js */ "./node_modules/avalanche/node_modules/bn.js/lib/bn.js"));
+
+const credentials_1 = __webpack_require__(/*! ../../common/credentials */ "./node_modules/avalanche/dist/common/credentials.js");
+/**
+ * @ignore
+ */
+
+
+const bintools = bintools_1.default.getInstance();
+/**
+ * Takes a buffer representing the output and returns the proper [[Input]] instance.
+ *
+ * @param inputID A number representing the inputID parsed prior to the bytes passed in
+ *
+ * @returns An instance of an [[Input]]-extended class.
+ */
+
+exports.SelectInputClass = (inputID, ...args) => {
+  if (inputID === constants_1.EVMConstants.SECPINPUTID) {
+    return new SECPTransferInput(...args);
+  }
+  /* istanbul ignore next */
+
+
+  throw new Error(`Error - SelectInputClass: unknown inputID ${inputID}`);
+};
+
+class TransferableInput extends input_1.StandardTransferableInput {
+  constructor() {
+    super(...arguments);
+    this._typeName = "TransferableInput";
+    this._typeID = undefined;
+  } //serialize is inherited
+
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.input = exports.SelectInputClass(fields["input"]["_typeID"]);
+    this.input.deserialize(fields["input"], encoding);
+  }
+  /**
+   * Takes a {@link https://github.com/feross/buffer|Buffer} containing a [[TransferableInput]], parses it, populates the class, and returns the length of the [[TransferableInput]] in bytes.
+   *
+   * @param bytes A {@link https://github.com/feross/buffer|Buffer} containing a raw [[TransferableInput]]
+   *
+   * @returns The length of the raw [[TransferableInput]]
+   */
+
+
+  fromBuffer(bytes, offset = 0) {
+    this.txid = bintools.copyFrom(bytes, offset, offset + 32);
+    offset += 32;
+    this.outputidx = bintools.copyFrom(bytes, offset, offset + 4);
+    offset += 4;
+    this.assetid = bintools.copyFrom(bytes, offset, offset + constants_1.EVMConstants.ASSETIDLEN);
+    offset += 32;
+    const inputid = bintools.copyFrom(bytes, offset, offset + 4).readUInt32BE(0);
+    offset += 4;
+    this.input = exports.SelectInputClass(inputid);
+    return this.input.fromBuffer(bytes, offset);
+  }
+
+}
+
+exports.TransferableInput = TransferableInput;
+
+class AmountInput extends input_1.StandardAmountInput {
+  constructor() {
+    super(...arguments);
+    this._typeName = "AmountInput";
+    this._typeID = undefined;
+  } //serialize and deserialize both are inherited
+
+
+  select(id, ...args) {
+    return exports.SelectInputClass(id, ...args);
+  }
+
+}
+
+exports.AmountInput = AmountInput;
+
+class SECPTransferInput extends AmountInput {
+  constructor() {
+    super(...arguments);
+    this._typeName = "SECPTransferInput";
+    this._typeID = constants_1.EVMConstants.SECPINPUTID;
+
+    this.getCredentialID = () => constants_1.EVMConstants.SECPCREDENTIAL;
+  } //serialize and deserialize both are inherited
+
+  /**
+     * Returns the inputID for this input
+     */
+
+
+  getInputID() {
+    return constants_1.EVMConstants.SECPINPUTID;
+  }
+
+  create(...args) {
+    return new SECPTransferInput(...args);
+  }
+
+  clone() {
+    const newout = this.create();
+    newout.fromBuffer(this.toBuffer());
+    return newout;
+  }
+
+}
+
+exports.SECPTransferInput = SECPTransferInput;
+
+class EVMInput extends outputs_1.EVMOutput {
+  /**
+   * An [[EVMInput]] class which contains address, amount, assetID, nonce.
+   *
+   * @param address is the EVM address from which to transfer funds.
+   * @param amount is the amount of the asset to be transferred (specified in nAVAX for AVAX and the smallest denomination for all other assets).
+   * @param assetID The assetID which is being sent as a {@link https://github.com/feross/buffer|Buffer} or as a string.
+   * @param nonce A {@link https://github.com/indutny/bn.js/|BN} or a number representing the nonce.
+   */
+  constructor(address = undefined, amount = undefined, assetID = undefined, nonce = undefined) {
+    super(address, amount, assetID);
+    this.nonce = buffer_1.Buffer.alloc(8);
+    this.nonceValue = new bn_js_1.default(0);
+    this.sigCount = buffer_1.Buffer.alloc(4);
+    this.sigIdxs = []; // idxs of signers from utxo
+
+    /**
+     * Returns the array of [[SigIdx]] for this [[Input]]
+     */
+
+    this.getSigIdxs = () => this.sigIdxs;
+    /**
+     * Creates and adds a [[SigIdx]] to the [[Input]].
+     *
+     * @param addressIdx The index of the address to reference in the signatures
+     * @param address The address of the source of the signature
+     */
+
+
+    this.addSignatureIdx = (addressIdx, address) => {
+      const sigidx = new credentials_1.SigIdx();
+      const b = buffer_1.Buffer.alloc(4);
+      b.writeUInt32BE(addressIdx, 0);
+      sigidx.fromBuffer(b);
+      sigidx.setSource(address);
+      this.sigIdxs.push(sigidx);
+      this.sigCount.writeUInt32BE(this.sigIdxs.length, 0);
+    };
+    /**
+     * Returns the nonce as a {@link https://github.com/indutny/bn.js/|BN}.
+     */
+
+
+    this.getNonce = () => this.nonceValue.clone();
+
+    this.getCredentialID = () => constants_1.EVMConstants.SECPCREDENTIAL;
+
+    if (typeof nonce !== 'undefined') {
+      // convert number nonce to BN
+      let n;
+
+      if (typeof nonce === 'number') {
+        n = new bn_js_1.default(nonce);
+      } else {
+        n = nonce;
+      }
+
+      this.nonceValue = n.clone();
+      this.nonce = bintools.fromBNToBuffer(n, 8);
+    }
+  }
+  /**
+   * Returns a {@link https://github.com/feross/buffer|Buffer} representation of the [[EVMOutput]].
+   */
+
+
+  toBuffer() {
+    let superbuff = super.toBuffer();
+    let bsize = superbuff.length + this.nonce.length;
+    let barr = [superbuff, this.nonce];
+    return buffer_1.Buffer.concat(barr, bsize);
+  }
+  /**
+   * Decodes the [[EVMInput]] as a {@link https://github.com/feross/buffer|Buffer} and returns the size.
+   *
+   * @param bytes The bytes as a {@link https://github.com/feross/buffer|Buffer}.
+   * @param offset An offset as a number.
+   */
+
+
+  fromBuffer(bytes, offset = 0) {
+    offset = super.fromBuffer(bytes, offset);
+    this.nonce = bintools.copyFrom(bytes, offset, offset + 8);
+    offset += 8;
+    return offset;
+  }
+  /**
+   * Returns a base-58 representation of the [[EVMInput]].
+   */
+
+
+  toString() {
+    return bintools.bufferToB58(this.toBuffer());
+  }
+
+  create(...args) {
+    return new EVMInput(...args);
+  }
+
+  clone() {
+    const newEVMInput = this.create();
+    newEVMInput.fromBuffer(this.toBuffer());
+    return newEVMInput;
+  }
+
+}
+
+exports.EVMInput = EVMInput;
+
+/***/ }),
+
+/***/ "./node_modules/avalanche/dist/apis/evm/keychain.js":
+/*!**********************************************************!*\
+  !*** ./node_modules/avalanche/dist/apis/evm/keychain.js ***!
+  \**********************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+/**
+ * @packageDocumentation
+ * @module API-EVM-KeyChain
+ */
+
+var __importDefault = this && this.__importDefault || function (mod) {
+  return mod && mod.__esModule ? mod : {
+    "default": mod
+  };
+};
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.KeyChain = exports.KeyPair = void 0;
+
+const bintools_1 = __importDefault(__webpack_require__(/*! ../../utils/bintools */ "./node_modules/avalanche/dist/utils/bintools.js"));
+
+const secp256k1_1 = __webpack_require__(/*! ../../common/secp256k1 */ "./node_modules/avalanche/dist/common/secp256k1.js");
+/**
+ * @ignore
+ */
+
+
+const bintools = bintools_1.default.getInstance();
+/**
+ * Class for representing a private and public keypair on an AVM Chain.
+ */
+
+class KeyPair extends secp256k1_1.SECP256k1KeyPair {
+  constructor(hrp, chainid) {
+    super();
+    this.chainID = '';
+    this.hrp = '';
+    /**
+     * Returns the address's string representation.
+      *
+      * @returns A string representation of the address
+      */
+
+    this.getAddressString = () => {
+      const addr = this.addressFromPublicKey(this.pubk);
+      return bintools.addressToString(this.hrp, this.chainID, addr);
+    };
+    /**
+      * Returns the chainID associated with this key.
+      *
+      * @returns The [[KeyPair]]'s chainID
+      */
+
+
+    this.getChainID = () => this.chainID;
+    /**
+      * Sets the the chainID associated with this key.
+      *
+      * @param chainID String for the chainID
+      */
+
+
+    this.setChainID = chainID => {
+      this.chainID = chainID;
+    };
+    /**
+      * Returns the Human-Readable-Part of the network associated with this key.
+      *
+      * @returns The [[KeyPair]]'s Human-Readable-Part of the network's Bech32 addressing scheme
+      */
+
+
+    this.getHRP = () => this.hrp;
+    /**
+      * Sets the the Human-Readable-Part of the network associated with this key.
+      *
+      * @param hrp String for the Human-Readable-Part of Bech32 addresses
+      */
+
+
+    this.setHRP = hrp => {
+      this.hrp = hrp;
+    };
+
+    this.chainID = chainid;
+    this.hrp = hrp;
+    this.generateKey();
+  }
+
+  clone() {
+    let newkp = new KeyPair(this.hrp, this.chainID);
+    newkp.importKey(bintools.copyFrom(this.getPrivateKey()));
+    return newkp;
+  }
+
+  create(...args) {
+    if (args.length == 2) {
+      return new KeyPair(args[0], args[1]);
+    }
+
+    return new KeyPair(this.hrp, this.chainID);
+  }
+
+}
+
+exports.KeyPair = KeyPair;
+/**
+  * Class for representing a key chain in Avalanche.
+  *
+  * @typeparam KeyPair Class extending [[SECP256k1KeyChain]] which is used as the key in [[KeyChain]]
+  */
+
+class KeyChain extends secp256k1_1.SECP256k1KeyChain {
+  /**
+    * Returns instance of KeyChain.
+    */
+  constructor(hrp, chainID) {
+    super();
+    this.hrp = '';
+    this.chainID = '';
+    /**
+      * Makes a new key pair, returns the address.
+      *
+      * @returns The new key pair
+      */
+
+    this.makeKey = () => {
+      let keypair = new KeyPair(this.hrp, this.chainID);
+      this.addKey(keypair);
+      return keypair;
+    };
+
+    this.addKey = newKey => {
+      newKey.setChainID(this.chainID);
+      super.addKey(newKey);
+    };
+    /**
+      * Given a private key, makes a new key pair, returns the address.
+      *
+      * @param privk A {@link https://github.com/feross/buffer|Buffer}
+      * or cb58 serialized string representing the private key
+      *
+      * @returns The new key pair
+      */
+
+
+    this.importKey = privk => {
+      let keypair = new KeyPair(this.hrp, this.chainID);
+      let pk;
+
+      if (typeof privk === 'string') {
+        pk = bintools.cb58Decode(privk.split('-')[1]);
+      } else {
+        pk = bintools.copyFrom(privk);
+      }
+
+      keypair.importKey(pk);
+
+      if (!(keypair.getAddress().toString("hex") in this.keys)) {
+        this.addKey(keypair);
+      }
+
+      return keypair;
+    };
+
+    this.hrp = hrp;
+    this.chainID = chainID;
+  }
+
+  create(...args) {
+    if (args.length == 2) {
+      return new KeyChain(args[0], args[1]);
+    }
+
+    return new KeyChain(this.hrp, this.chainID);
+  }
+
+  clone() {
+    const newkc = new KeyChain(this.hrp, this.chainID);
+
+    for (let k in this.keys) {
+      newkc.addKey(this.keys[k].clone());
+    }
+
+    return newkc;
+  }
+
+  union(kc) {
+    let newkc = kc.clone();
+
+    for (let k in this.keys) {
+      newkc.addKey(this.keys[k].clone());
+    }
+
+    return newkc;
+  }
+
+}
+
+exports.KeyChain = KeyChain;
+
+/***/ }),
+
+/***/ "./node_modules/avalanche/dist/apis/evm/outputs.js":
+/*!*********************************************************!*\
+  !*** ./node_modules/avalanche/dist/apis/evm/outputs.js ***!
+  \*********************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+var __importDefault = this && this.__importDefault || function (mod) {
+  return mod && mod.__esModule ? mod : {
+    "default": mod
+  };
+};
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.EVMOutput = exports.SECPTransferOutput = exports.AmountOutput = exports.TransferableOutput = exports.SelectOutputClass = void 0;
+/**
+ * @packageDocumentation
+ * @module API-EVM-Outputs
+ */
+
+const buffer_1 = __webpack_require__(/*! buffer/ */ "./node_modules/node-libs-browser/node_modules/buffer/index.js");
+
+const bn_js_1 = __importDefault(__webpack_require__(/*! bn.js */ "./node_modules/avalanche/node_modules/bn.js/lib/bn.js"));
+
+const bintools_1 = __importDefault(__webpack_require__(/*! ../../utils/bintools */ "./node_modules/avalanche/dist/utils/bintools.js"));
+
+const constants_1 = __webpack_require__(/*! ./constants */ "./node_modules/avalanche/dist/apis/evm/constants.js");
+
+const output_1 = __webpack_require__(/*! ../../common/output */ "./node_modules/avalanche/dist/common/output.js");
+
+const bintools = bintools_1.default.getInstance();
+/**
+ * Takes a buffer representing the output and returns the proper Output instance.
+ *
+ * @param outputID A number representing the outputID parsed prior to the bytes passed in
+ *
+ * @returns An instance of an [[Output]]-extended class.
+ */
+
+exports.SelectOutputClass = (outputID, ...args) => {
+  if (outputID == constants_1.EVMConstants.SECPXFEROUTPUTID) {
+    return new SECPTransferOutput(...args);
+  }
+
+  throw new Error(`Error - SelectOutputClass: unknown outputID ${outputID}`);
+};
+
+class TransferableOutput extends output_1.StandardTransferableOutput {
+  constructor() {
+    super(...arguments);
+    this._typeName = "TransferableOutput";
+    this._typeID = undefined;
+  } //serialize is inherited
+
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.output = exports.SelectOutputClass(fields["output"]["_typeID"]);
+    this.output.deserialize(fields["output"], encoding);
+  }
+
+  fromBuffer(bytes, offset = 0) {
+    this.assetID = bintools.copyFrom(bytes, offset, offset + constants_1.EVMConstants.ASSETIDLEN);
+    offset += constants_1.EVMConstants.ASSETIDLEN;
+    const outputid = bintools.copyFrom(bytes, offset, offset + 4).readUInt32BE(0);
+    offset += 4;
+    this.output = exports.SelectOutputClass(outputid);
+    return this.output.fromBuffer(bytes, offset);
+  }
+
+}
+
+exports.TransferableOutput = TransferableOutput;
+
+class AmountOutput extends output_1.StandardAmountOutput {
+  constructor() {
+    super(...arguments);
+    this._typeName = "AmountOutput";
+    this._typeID = undefined;
+  } //serialize and deserialize both are inherited
+
+  /**
+   *
+   * @param assetID An assetID which is wrapped around the Buffer of the Output
+   */
+
+
+  makeTransferable(assetID) {
+    return new TransferableOutput(assetID, this);
+  }
+
+  select(id, ...args) {
+    return exports.SelectOutputClass(id, ...args);
+  }
+
+}
+
+exports.AmountOutput = AmountOutput;
+/**
+ * An [[Output]] class which specifies an Output that carries an ammount for an assetID and uses secp256k1 signature scheme.
+ */
+
+class SECPTransferOutput extends AmountOutput {
+  constructor() {
+    super(...arguments);
+    this._typeName = "SECPTransferOutput";
+    this._typeID = constants_1.EVMConstants.SECPXFEROUTPUTID;
+  } //serialize and deserialize both are inherited
+
+  /**
+     * Returns the outputID for this output
+     */
+
+
+  getOutputID() {
+    return this._typeID;
+  }
+
+  create(...args) {
+    return new SECPTransferOutput(...args);
+  }
+
+  clone() {
+    const newout = this.create();
+    newout.fromBuffer(this.toBuffer());
+    return newout;
+  }
+
+}
+
+exports.SECPTransferOutput = SECPTransferOutput;
+
+class EVMOutput {
+  /**
+   * An [[EVMOutput]] class which contains address, amount, and assetID.
+   *
+   * @param address The address recieving the asset as a {@link https://github.com/feross/buffer|Buffer} or a string.
+   * @param amount A {@link https://github.com/indutny/bn.js/|BN} or number representing the amount.
+   * @param assetID The assetID which is being sent as a {@link https://github.com/feross/buffer|Buffer} or a string.
+   */
+  constructor(address = undefined, amount = undefined, assetID = undefined) {
+    this.address = buffer_1.Buffer.alloc(20);
+    this.amount = buffer_1.Buffer.alloc(8);
+    this.amountValue = new bn_js_1.default(0);
+    this.assetID = buffer_1.Buffer.alloc(32);
+    /**
+     * Returns the address of the input as {@link https://github.com/feross/buffer|Buffer}
+     */
+
+    this.getAddress = () => this.address;
+    /**
+     * Returns the address as a bech32 encoded string.
+     */
+
+
+    this.getAddressString = () => this.address.toString('hex');
+    /**
+     * Returns the amount as a {@link https://github.com/indutny/bn.js/|BN}.
+     */
+
+
+    this.getAmount = () => this.amountValue.clone();
+    /**
+     * Returns the assetid of the input as {@link https://github.com/feross/buffer|Buffer}
+     */
+
+
+    this.getAssetID = () => this.assetID;
+
+    if (typeof address !== 'undefined' && typeof amount !== 'undefined' && typeof assetID !== 'undefined') {
+      if (typeof address === 'string') {
+        // if present then remove `0x` prefix
+        let prefix = address.substring(0, 2);
+
+        if (prefix === '0x') {
+          address = address.split('x')[1];
+        }
+
+        address = buffer_1.Buffer.from(address, 'hex');
+      } // convert number amount to BN
+
+
+      let amnt;
+
+      if (typeof amount === 'number') {
+        amnt = new bn_js_1.default(amount);
+      } else {
+        amnt = amount;
+      } // convert string assetID to Buffer
+
+
+      if (!(assetID instanceof buffer_1.Buffer)) {
+        assetID = bintools.cb58Decode(assetID);
+      }
+
+      this.address = address;
+      this.amountValue = amnt.clone();
+      this.amount = bintools.fromBNToBuffer(amnt, 8);
+      this.assetID = assetID;
+    }
+  }
+  /**
+   * Returns a {@link https://github.com/feross/buffer|Buffer} representation of the [[EVMOutput]].
+   */
+
+
+  toBuffer() {
+    const bsize = this.address.length + this.amount.length + this.assetID.length;
+    const barr = [this.address, this.amount, this.assetID];
+    const buff = buffer_1.Buffer.concat(barr, bsize);
+    return buff;
+  }
+  /**
+   * Decodes the [[EVMOutput]] as a {@link https://github.com/feross/buffer|Buffer} and returns the size.
+   */
+
+
+  fromBuffer(bytes, offset = 0) {
+    this.address = bintools.copyFrom(bytes, offset, offset + 20);
+    offset += 20;
+    this.amount = bintools.copyFrom(bytes, offset, offset + 8);
+    offset += 8;
+    this.assetID = bintools.copyFrom(bytes, offset, offset + 32);
+    offset += 32;
+    return offset;
+  }
+  /**
+   * Returns a base-58 representation of the [[EVMOutput]].
+   */
+
+
+  toString() {
+    return bintools.bufferToB58(this.toBuffer());
+  }
+
+  create(...args) {
+    return new EVMOutput(...args);
+  }
+
+  clone() {
+    const newEVMOutput = this.create();
+    newEVMOutput.fromBuffer(this.toBuffer());
+    return newEVMOutput;
+  }
+
+}
+
+exports.EVMOutput = EVMOutput;
+
+/***/ }),
+
+/***/ "./node_modules/avalanche/dist/apis/evm/tx.js":
+/*!****************************************************!*\
+  !*** ./node_modules/avalanche/dist/apis/evm/tx.js ***!
+  \****************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+/**
+ * @packageDocumentation
+ * @module API-EVM-Transactions
+ */
+
+var __importDefault = this && this.__importDefault || function (mod) {
+  return mod && mod.__esModule ? mod : {
+    "default": mod
+  };
+};
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.Tx = exports.UnsignedTx = exports.SelectTxClass = void 0;
+
+const buffer_1 = __webpack_require__(/*! buffer/ */ "./node_modules/node-libs-browser/node_modules/buffer/index.js");
+
+const bintools_1 = __importDefault(__webpack_require__(/*! ../../utils/bintools */ "./node_modules/avalanche/dist/utils/bintools.js"));
+
+const constants_1 = __webpack_require__(/*! ./constants */ "./node_modules/avalanche/dist/apis/evm/constants.js");
+
+const credentials_1 = __webpack_require__(/*! ./credentials */ "./node_modules/avalanche/dist/apis/evm/credentials.js");
+
+const evmtx_1 = __webpack_require__(/*! ../../common/evmtx */ "./node_modules/avalanche/dist/common/evmtx.js");
+
+const create_hash_1 = __importDefault(__webpack_require__(/*! create-hash */ "./node_modules/create-hash/browser.js"));
+
+const importtx_1 = __webpack_require__(/*! ./importtx */ "./node_modules/avalanche/dist/apis/evm/importtx.js");
+
+const exporttx_1 = __webpack_require__(/*! ./exporttx */ "./node_modules/avalanche/dist/apis/evm/exporttx.js");
+/**
+ * @ignore
+ */
+
+
+const bintools = bintools_1.default.getInstance();
+/**
+ * Takes a buffer representing the output and returns the proper [[EVMBaseTx]] instance.
+ *
+ * @param txTypeID The id of the transaction type
+ *
+ * @returns An instance of an [[EVMBaseTx]]-extended class.
+ */
+
+exports.SelectTxClass = (txTypeID, ...args) => {
+  if (txTypeID === constants_1.EVMConstants.IMPORTTX) {
+    return new importtx_1.ImportTx(...args);
+  } else if (txTypeID === constants_1.EVMConstants.EXPORTTX) {
+    return new exporttx_1.ExportTx(...args);
+  }
+  /* istanbul ignore next */
+
+
+  throw new Error(`Error - SelectTxClass: unknown txType ${txTypeID}`);
+};
+
+class UnsignedTx extends evmtx_1.EVMStandardUnsignedTx {
+  constructor() {
+    super(...arguments);
+    this._typeName = "UnsignedTx";
+    this._typeID = undefined;
+  } //serialize is inherited
+
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.transaction = exports.SelectTxClass(fields["transaction"]["_typeID"]);
+    this.transaction.deserialize(fields["transaction"], encoding);
+  }
+
+  getTransaction() {
+    return this.transaction;
+  }
+
+  fromBuffer(bytes, offset = 0) {
+    this.codecid = bintools.copyFrom(bytes, offset, offset + 2).readUInt16BE(0);
+    offset += 2;
+    const txtype = bintools.copyFrom(bytes, offset, offset + 4).readUInt32BE(0);
+    offset += 4;
+    this.transaction = exports.SelectTxClass(txtype);
+    return this.transaction.fromBuffer(bytes, offset);
+  }
+  /**
+   * Signs this [[UnsignedTx]] and returns signed [[StandardTx]]
+   *
+   * @param kc An [[KeyChain]] used in signing
+   *
+   * @returns A signed [[StandardTx]]
+   */
+
+
+  sign(kc) {
+    const txbuff = this.toBuffer();
+    const msg = buffer_1.Buffer.from(create_hash_1.default('sha256').update(txbuff).digest());
+    const sigs = this.transaction.sign(msg, kc);
+    return new Tx(this, sigs);
+  }
+
+}
+
+exports.UnsignedTx = UnsignedTx;
+
+class Tx extends evmtx_1.EVMStandardTx {
+  constructor() {
+    super(...arguments);
+    this._typeName = "Tx";
+    this._typeID = undefined;
+  } //serialize is inherited
+
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.unsignedTx = new UnsignedTx();
+    this.unsignedTx.deserialize(fields["unsignedTx"], encoding);
+    this.credentials = [];
+
+    for (let i = 0; i < fields["credentials"].length; i++) {
+      const cred = credentials_1.SelectCredentialClass(fields["credentials"][i]["_typeID"]);
+      cred.deserialize(fields["credentials"][i], encoding);
+      this.credentials.push(cred);
+    }
+  }
+  /**
+   * Takes a {@link https://github.com/feross/buffer|Buffer} containing an [[Tx]], parses it,
+   * populates the class, and returns the length of the Tx in bytes.
+   *
+   * @param bytes A {@link https://github.com/feross/buffer|Buffer} containing a raw [[Tx]]
+   * @param offset A number representing the starting point of the bytes to begin parsing
+   *
+   * @returns The length of the raw [[Tx]]
+   */
+
+
+  fromBuffer(bytes, offset = 0) {
+    this.unsignedTx = new UnsignedTx();
+    offset = this.unsignedTx.fromBuffer(bytes, offset);
+    const numcreds = bintools.copyFrom(bytes, offset, offset + 4).readUInt32BE(0);
+    offset += 4;
+    this.credentials = [];
+
+    for (let i = 0; i < numcreds; i++) {
+      const credid = bintools.copyFrom(bytes, offset, offset + 4).readUInt32BE(0);
+      offset += 4;
+      const cred = credentials_1.SelectCredentialClass(credid);
+      offset = cred.fromBuffer(bytes, offset);
+      this.credentials.push(cred);
+    }
+
+    return offset;
+  }
+
+}
+
+exports.Tx = Tx;
+
+/***/ }),
+
+/***/ "./node_modules/avalanche/dist/apis/evm/utxos.js":
+/*!*******************************************************!*\
+  !*** ./node_modules/avalanche/dist/apis/evm/utxos.js ***!
+  \*******************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+/**
+ * @packageDocumentation
+ * @module API-EVM-UTXOs
+ */
+
+var __importDefault = this && this.__importDefault || function (mod) {
+  return mod && mod.__esModule ? mod : {
+    "default": mod
+  };
+};
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.UTXOSet = exports.AssetAmountDestination = exports.UTXO = void 0;
+
+const buffer_1 = __webpack_require__(/*! buffer/ */ "./node_modules/node-libs-browser/node_modules/buffer/index.js");
+
+const bintools_1 = __importDefault(__webpack_require__(/*! ../../utils/bintools */ "./node_modules/avalanche/dist/utils/bintools.js"));
+
+const bn_js_1 = __importDefault(__webpack_require__(/*! bn.js */ "./node_modules/avalanche/node_modules/bn.js/lib/bn.js"));
+
+const outputs_1 = __webpack_require__(/*! ./outputs */ "./node_modules/avalanche/dist/apis/evm/outputs.js");
+
+const constants_1 = __webpack_require__(/*! ./constants */ "./node_modules/avalanche/dist/apis/evm/constants.js");
+
+const inputs_1 = __webpack_require__(/*! ./inputs */ "./node_modules/avalanche/dist/apis/evm/inputs.js");
+
+const helperfunctions_1 = __webpack_require__(/*! ../../utils/helperfunctions */ "./node_modules/avalanche/dist/utils/helperfunctions.js");
+
+const utxos_1 = __webpack_require__(/*! ../../common/utxos */ "./node_modules/avalanche/dist/common/utxos.js");
+
+const constants_2 = __webpack_require__(/*! ../../utils/constants */ "./node_modules/avalanche/dist/utils/constants.js");
+
+const assetamount_1 = __webpack_require__(/*! ../../common/assetamount */ "./node_modules/avalanche/dist/common/assetamount.js");
+
+const serialization_1 = __webpack_require__(/*! ../../utils/serialization */ "./node_modules/avalanche/dist/utils/serialization.js");
+
+const tx_1 = __webpack_require__(/*! ./tx */ "./node_modules/avalanche/dist/apis/evm/tx.js");
+
+const importtx_1 = __webpack_require__(/*! ./importtx */ "./node_modules/avalanche/dist/apis/evm/importtx.js");
+
+const exporttx_1 = __webpack_require__(/*! ./exporttx */ "./node_modules/avalanche/dist/apis/evm/exporttx.js");
+/**
+ * @ignore
+ */
+
+
+const bintools = bintools_1.default.getInstance();
+const serializer = serialization_1.Serialization.getInstance();
+/**
+ * Class for representing a single UTXO.
+ */
+
+class UTXO extends utxos_1.StandardUTXO {
+  constructor() {
+    super(...arguments);
+    this._typeName = "UTXO";
+    this._typeID = undefined;
+  } //serialize is inherited
+
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.output = outputs_1.SelectOutputClass(fields["output"]["_typeID"]);
+    this.output.deserialize(fields["output"], encoding);
+  }
+
+  fromBuffer(bytes, offset = 0) {
+    this.codecid = bintools.copyFrom(bytes, offset, offset + 2);
+    offset += 2;
+    this.txid = bintools.copyFrom(bytes, offset, offset + 32);
+    offset += 32;
+    this.outputidx = bintools.copyFrom(bytes, offset, offset + 4);
+    offset += 4;
+    this.assetid = bintools.copyFrom(bytes, offset, offset + 32);
+    offset += 32;
+    const outputid = bintools.copyFrom(bytes, offset, offset + 4).readUInt32BE(0);
+    offset += 4;
+    this.output = outputs_1.SelectOutputClass(outputid);
+    return this.output.fromBuffer(bytes, offset);
+  }
+  /**
+   * Takes a base-58 string containing a [[UTXO]], parses it, populates the class, and returns the length of the StandardUTXO in bytes.
+   *
+   * @param serialized A base-58 string containing a raw [[UTXO]]
+   *
+   * @returns The length of the raw [[UTXO]]
+   *
+   * @remarks
+   * unlike most fromStrings, it expects the string to be serialized in cb58 format
+   */
+
+
+  fromString(serialized) {
+    /* istanbul ignore next */
+    return this.fromBuffer(bintools.cb58Decode(serialized));
+  }
+  /**
+   * Returns a base-58 representation of the [[UTXO]].
+   *
+   * @remarks
+   * unlike most toStrings, this returns in cb58 serialization format
+   */
+
+
+  toString() {
+    /* istanbul ignore next */
+    return bintools.cb58Encode(this.toBuffer());
+  }
+
+  clone() {
+    const utxo = new UTXO();
+    utxo.fromBuffer(this.toBuffer());
+    return utxo;
+  }
+
+  create(codecID = constants_1.EVMConstants.LATESTCODEC, txID = undefined, outputidx = undefined, assetID = undefined, output = undefined) {
+    return new UTXO(codecID, txID, outputidx, assetID, output);
+  }
+
+}
+
+exports.UTXO = UTXO;
+
+class AssetAmountDestination extends assetamount_1.StandardAssetAmountDestination {}
+
+exports.AssetAmountDestination = AssetAmountDestination;
+/**
+ * Class representing a set of [[UTXO]]s.
+ */
+
+class UTXOSet extends utxos_1.StandardUTXOSet {
+  constructor() {
+    super(...arguments);
+    this._typeName = "UTXOSet";
+    this._typeID = undefined;
+
+    this.getMinimumSpendable = (aad, asOf = helperfunctions_1.UnixNow(), locktime = new bn_js_1.default(0), threshold = 1) => {
+      const utxoArray = this.getAllUTXOs();
+      const outids = {};
+
+      for (let i = 0; i < utxoArray.length && !aad.canComplete(); i++) {
+        const u = utxoArray[i];
+        const assetKey = u.getAssetID().toString("hex");
+        const fromAddresses = aad.getSenders();
+
+        if (u.getOutput() instanceof outputs_1.AmountOutput && aad.assetExists(assetKey) && u.getOutput().meetsThreshold(fromAddresses, asOf)) {
+          const am = aad.getAssetAmount(assetKey);
+
+          if (!am.isFinished()) {
+            const uout = u.getOutput();
+            outids[assetKey] = uout.getOutputID();
+            const amount = uout.getAmount();
+            am.spendAmount(amount);
+            const txid = u.getTxID();
+            const outputidx = u.getOutputIdx();
+            const input = new inputs_1.SECPTransferInput(amount);
+            const xferin = new inputs_1.TransferableInput(txid, outputidx, u.getAssetID(), input);
+            const spenders = uout.getSpenders(fromAddresses, asOf);
+            spenders.forEach(spender => {
+              const idx = uout.getAddressIdx(spender);
+
+              if (idx === -1) {
+                /* istanbul ignore next */
+                throw new Error(`Error - UTXOSet.getMinimumSpendable: no such address in output: ${spender}`);
+              }
+
+              xferin.getInput().addSignatureIdx(idx, spender);
+            });
+            aad.addInput(xferin);
+          } else if (aad.assetExists(assetKey) && !(u.getOutput() instanceof outputs_1.AmountOutput)) {
+            /**
+             * Leaving the below lines, not simply for posterity, but for clarification.
+             * AssetIDs may have mixed OutputTypes.
+             * Some of those OutputTypes may implement AmountOutput.
+             * Others may not.
+             * Simply continue in this condition.
+             */
+
+            /*return new Error('Error - UTXOSet.getMinimumSpendable: outputID does not '
+              + `implement AmountOutput: ${u.getOutput().getOutputID}`);*/
+            continue;
+          }
+        }
+      }
+
+      if (!aad.canComplete()) {
+        return new Error(`Error - UTXOSet.getMinimumSpendable: insufficient funds to create the transaction`);
+      }
+
+      const amounts = aad.getAmounts();
+      const zero = new bn_js_1.default(0);
+
+      for (let i = 0; i < amounts.length; i++) {
+        const assetKey = amounts[i].getAssetIDString();
+        const amount = amounts[i].getAmount();
+
+        if (amount.gt(zero)) {
+          const spendout = outputs_1.SelectOutputClass(outids[assetKey], amount, aad.getDestinations(), locktime, threshold);
+          const xferout = new outputs_1.TransferableOutput(amounts[i].getAssetID(), spendout);
+          aad.addOutput(xferout);
+        }
+
+        const change = amounts[i].getChange();
+
+        if (change.gt(zero)) {
+          const changeout = outputs_1.SelectOutputClass(outids[assetKey], change, aad.getChangeAddresses());
+          const chgxferout = new outputs_1.TransferableOutput(amounts[i].getAssetID(), changeout);
+          aad.addChange(chgxferout);
+        }
+      }
+
+      return undefined;
+    };
+    /**
+      * Creates an unsigned ImportTx transaction.
+      *
+      * @param networkID The number representing NetworkID of the node
+      * @param blockchainID The {@link https://github.com/feross/buffer|Buffer} representing the BlockchainID for the transaction
+      * @param toAddresses The addresses to send the funds
+      * @param fromAddresses The addresses being used to send the funds from the UTXOs {@link https://github.com/feross/buffer|Buffer}
+      * @param importIns An array of [[TransferableInput]]s being imported
+      * @param sourceChain A {@link https://github.com/feross/buffer|Buffer} for the chainid where the imports are coming from.
+      * @param fee Optional. The amount of fees to burn in its smallest denomination, represented as {@link https://github.com/indutny/bn.js/|BN}. Fee will come from the inputs first, if they can.
+      * @param feeAssetID Optional. The assetID of the fees being burned.
+      * @param memo Optional contains arbitrary bytes, up to 256 bytes
+      * @param asOf Optional. The timestamp to verify the transaction against as a {@link https://github.com/indutny/bn.js/|BN}
+      * @param locktime Optional. The locktime field created in the resulting outputs
+      * @param threshold Optional. The number of signatures required to spend the funds in the resultant UTXO
+      * @returns An unsigned transaction created from the passed in parameters.
+      *
+      */
+
+
+    this.buildImportTx = (networkID, blockchainID, toAddresses, fromAddresses, atomics, sourceChain = undefined, fee = undefined, feeAssetID = undefined) => {
+      const zero = new bn_js_1.default(0);
+      let ins = [];
+      const outs = [];
+
+      if (typeof fee === "undefined") {
+        fee = zero.clone();
+      }
+
+      let feepaid = new bn_js_1.default(0);
+      const feeAssetStr = feeAssetID.toString("hex");
+      atomics.forEach(atomic => {
+        const assetID = atomic.getAssetID();
+        const output = atomic.getOutput();
+        const amt = output.getAmount().clone();
+        let infeeamount = amt.clone();
+        const assetStr = assetID.toString("hex");
+
+        if (typeof feeAssetID !== "undefined" && fee.gt(zero) && feepaid.lt(fee) && assetStr === feeAssetStr) {
+          feepaid = feepaid.add(infeeamount);
+
+          if (feepaid.gt(fee)) {
+            infeeamount = feepaid.sub(fee);
+            feepaid = fee.clone();
+          } else {
+            infeeamount = zero.clone();
+          }
+        }
+
+        const txid = atomic.getTxID();
+        const outputidx = atomic.getOutputIdx();
+        const input = new inputs_1.SECPTransferInput(amt);
+        const xferin = new inputs_1.TransferableInput(txid, outputidx, assetID, input);
+        const from = output.getAddresses();
+        const spenders = output.getSpenders(from);
+        spenders.forEach(spender => {
+          const idx = output.getAddressIdx(spender);
+
+          if (idx === -1) {
+            /* istanbul ignore next */
+            throw new Error(`Error - UTXOSet.buildImportTx: no such address in output: ${spender}`);
+          }
+
+          xferin.getInput().addSignatureIdx(idx, spender);
+        });
+        ins.push(xferin); // lexicographically sort array
+
+        ins = ins.sort(inputs_1.TransferableInput.comparator()); // add extra outputs for each amount (calculated from the imported inputs), minus fees
+
+        if (infeeamount.gt(zero)) {
+          const evmOutput = new outputs_1.EVMOutput(toAddresses[0], amt, assetID);
+          outs.push(evmOutput);
+        }
+      });
+      const importTx = new importtx_1.ImportTx(networkID, blockchainID, sourceChain, ins, outs);
+      return new tx_1.UnsignedTx(importTx);
+    };
+    /**
+    * Creates an unsigned ExportTx transaction.
+    *
+    * @param networkID The number representing NetworkID of the node
+    * @param blockchainID The {@link https://github.com/feross/buffer|Buffer} representing the BlockchainID for the transaction
+    * @param amount The amount being exported as a {@link https://github.com/indutny/bn.js/|BN}
+    * @param avaxAssetID {@link https://github.com/feross/buffer|Buffer} of the AssetID for AVAX
+    * @param toAddresses An array of addresses as {@link https://github.com/feross/buffer|Buffer} who recieves the AVAX
+    * @param fromAddresses An array of addresses as {@link https://github.com/feross/buffer|Buffer} who owns the AVAX
+    * @param changeAddresses Optional. The addresses that can spend the change remaining from the spent UTXOs.
+    * @param destinationChain Optional. A {@link https://github.com/feross/buffer|Buffer} for the chainid where to send the asset.
+    * @param fee Optional. The amount of fees to burn in its smallest denomination, represented as {@link https://github.com/indutny/bn.js/|BN}
+    * @param feeAssetID Optional. The assetID of the fees being burned.
+    * @param asOf Optional. The timestamp to verify the transaction against as a {@link https://github.com/indutny/bn.js/|BN}
+    * @param locktime Optional. The locktime field created in the resulting outputs
+    * @param threshold Optional. The number of signatures required to spend the funds in the resultant UTXO
+    * @returns An unsigned transaction created from the passed in parameters.
+    *
+    */
+
+
+    this.buildExportTx = (networkID, blockchainID, amount, avaxAssetID, toAddresses, fromAddresses, changeAddresses = undefined, destinationChain = undefined, fee = undefined, feeAssetID = undefined, asOf = helperfunctions_1.UnixNow(), locktime = new bn_js_1.default(0), threshold = 1) => {
+      let ins = [];
+      let outs = [];
+      let exportouts = [];
+
+      if (typeof changeAddresses === "undefined") {
+        changeAddresses = toAddresses;
+      }
+
+      const zero = new bn_js_1.default(0);
+
+      if (amount.eq(zero)) {
+        return undefined;
+      }
+
+      if (typeof feeAssetID === 'undefined') {
+        feeAssetID = avaxAssetID;
+      } else if (feeAssetID.toString('hex') !== avaxAssetID.toString('hex')) {
+        /* istanbul ignore next */
+        throw new Error('Error - UTXOSet.buildExportTx: feeAssetID must match avaxAssetID');
+      }
+
+      if (typeof destinationChain === 'undefined') {
+        destinationChain = bintools.cb58Decode(constants_2.PlatformChainID);
+      }
+
+      const aad = new AssetAmountDestination(toAddresses, fromAddresses, changeAddresses);
+
+      if (avaxAssetID.toString('hex') === feeAssetID.toString('hex')) {
+        aad.addAssetAmount(avaxAssetID, amount, fee);
+      } else {
+        aad.addAssetAmount(avaxAssetID, amount, zero);
+
+        if (this._feeCheck(fee, feeAssetID)) {
+          aad.addAssetAmount(feeAssetID, zero, fee);
+        }
+      }
+
+      const success = this.getMinimumSpendable(aad, asOf, locktime, threshold);
+
+      if (typeof success === 'undefined') {
+        outs = aad.getChangeOutputs();
+        exportouts = aad.getOutputs();
+      } else {
+        throw success;
+      }
+
+      const exportTx = new exporttx_1.ExportTx(networkID, blockchainID, destinationChain, ins, exportouts);
+      return new tx_1.UnsignedTx(exportTx);
+    };
+  } //serialize is inherited
+
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    let utxos = {};
+
+    for (let utxoid in fields["utxos"]) {
+      let utxoidCleaned = serializer.decoder(utxoid, encoding, "base58", "base58");
+      utxos[utxoidCleaned] = new UTXO();
+      utxos[utxoidCleaned].deserialize(fields["utxos"][utxoid], encoding);
+    }
+
+    let addressUTXOs = {};
+
+    for (let address in fields["addressUTXOs"]) {
+      let addressCleaned = serializer.decoder(address, encoding, "cb58", "hex");
+      let utxobalance = {};
+
+      for (let utxoid in fields["addressUTXOs"][address]) {
+        let utxoidCleaned = serializer.decoder(utxoid, encoding, "base58", "base58");
+        utxobalance[utxoidCleaned] = serializer.decoder(fields["addressUTXOs"][address][utxoid], encoding, "decimalString", "BN");
+      }
+
+      addressUTXOs[addressCleaned] = utxobalance;
+    }
+
+    this.utxos = utxos;
+    this.addressUTXOs = addressUTXOs;
   }
 
   parseUTXO(utxo) {
@@ -5549,12 +8965,17 @@ class InfoAPI extends jrpcapi_1.JRPCAPI {
     /**
      * Fetches the transaction fee from the node.
      *
-     * @returns Returns a Promise<BN> of the transaction fee in nAVAX.
+     * @returns Returns a Promise<object> of the transaction fee in nAVAX.
      */
 
 
     this.getTxFee = () => __awaiter(this, void 0, void 0, function* () {
-      return this.callMethod('info.getTxFee').then(response => new bn_js_1.default(response.data.result.txFee, 10));
+      return this.callMethod('info.getTxFee').then(response => {
+        return {
+          txFee: new bn_js_1.default(response.data.result.txFee, 10),
+          creationTxFee: new bn_js_1.default(response.data.result.creationTxFee, 10)
+        };
+      });
     });
     /**
      * Check whether a given chain is done bootstrapping
@@ -5568,7 +8989,7 @@ class InfoAPI extends jrpcapi_1.JRPCAPI {
       const params = {
         chain
       };
-      return this.callMethod('info.isBootstraped', params).then(response => response.data.result.isBootstrapped);
+      return this.callMethod('info.isBootstrapped', params).then(response => response.data.result.isBootstrapped);
     });
     /**
      * Returns the peers connected to the node.
@@ -6016,8 +9437,6 @@ const payload_1 = __webpack_require__(/*! ../../utils/payload */ "./node_modules
 const helperfunctions_1 = __webpack_require__(/*! ../../utils/helperfunctions */ "./node_modules/avalanche/dist/utils/helperfunctions.js");
 
 const utxos_1 = __webpack_require__(/*! ../platformvm/utxos */ "./node_modules/avalanche/dist/apis/platformvm/utxos.js");
-
-const axios_1 = __importDefault(__webpack_require__(/*! axios */ "./node_modules/axios/index.js"));
 /**
  * @ignore
  */
@@ -6048,9 +9467,12 @@ class PlatformVMAPI extends jrpcapi_1.JRPCAPI {
 
     this.keychain = new keychain_1.KeyChain('', '');
     this.blockchainID = constants_1.PlatformChainID;
+    this.blockchainAlias = undefined;
     this.AVAXAssetID = undefined;
-    this.fee = undefined;
-    this.minStake = undefined;
+    this.txFee = undefined;
+    this.creationTxFee = undefined;
+    this.minValidatorStake = undefined;
+    this.minDelegatorStake = undefined;
     /**
      * Gets the alias for the blockchainID if it exists, otherwise returns `undefined`.
      *
@@ -6058,13 +9480,31 @@ class PlatformVMAPI extends jrpcapi_1.JRPCAPI {
      */
 
     this.getBlockchainAlias = () => {
-      const netid = this.core.getNetworkID();
+      if (typeof this.blockchainAlias === "undefined") {
+        const netid = this.core.getNetworkID();
 
-      if (netid in constants_1.Defaults.network && this.blockchainID in constants_1.Defaults.network[netid]) {
-        return constants_1.Defaults.network[netid][this.blockchainID].alias;
+        if (netid in constants_1.Defaults.network && this.blockchainID in constants_1.Defaults.network[netid]) {
+          this.blockchainAlias = constants_1.Defaults.network[netid][this.blockchainID].alias;
+          return this.blockchainAlias;
+        } else {
+          /* istanbul ignore next */
+          return undefined;
+        }
       }
-      /* istanbul ignore next */
 
+      return this.blockchainAlias;
+    };
+    /**
+     * Sets the alias for the blockchainID.
+     *
+     * @param alias The alias for the blockchainID.
+     *
+     */
+
+
+    this.setBlockchainAlias = alias => {
+      this.blockchainAlias = alias;
+      /* istanbul ignore next */
 
       return undefined;
     };
@@ -6121,12 +9561,14 @@ class PlatformVMAPI extends jrpcapi_1.JRPCAPI {
     /**
      * Fetches the AVAX AssetID and returns it in a Promise.
      *
+     * @param refresh This function caches the response. Refresh = true will bust the cache.
+     *
      * @returns The the provided string representing the AVAX AssetID
      */
 
 
-    this.getAVAXAssetID = () => __awaiter(this, void 0, void 0, function* () {
-      if (typeof this.AVAXAssetID === 'undefined') {
+    this.getAVAXAssetID = (refresh = false) => __awaiter(this, void 0, void 0, function* () {
+      if (typeof this.AVAXAssetID === 'undefined' || refresh) {
         const assetID = yield this.getStakingAssetID();
         this.AVAXAssetID = bintools.cb58Decode(assetID);
       }
@@ -6134,38 +9576,88 @@ class PlatformVMAPI extends jrpcapi_1.JRPCAPI {
       return this.AVAXAssetID;
     });
     /**
-     * Gets the default fee for this chain.
+     * Overrides the defaults and sets the cache to a specific AVAX AssetID
      *
-     * @returns The default fee as a {@link https://github.com/indutny/bn.js/|BN}
+     * @param avaxAssetID A cb58 string or Buffer representing the AVAX AssetID
+     *
+     * @returns The the provided string representing the AVAX AssetID
      */
 
 
-    this.getDefaultFee = () => {
-      return this.core.getNetworkID() in constants_1.Defaults.network ? new bn_js_1.default(constants_1.Defaults.network[this.core.getNetworkID()]["X"]["fee"]) : new bn_js_1.default(0);
-    };
-    /**
-     * Gets the fee for this chain.
-     *
-     * @returns The fee as a {@link https://github.com/indutny/bn.js/|BN}
-     */
-
-
-    this.getFee = () => {
-      if (typeof this.fee === "undefined") {
-        this.fee = this.getDefaultFee();
+    this.setAVAXAssetID = avaxAssetID => {
+      if (typeof avaxAssetID === "string") {
+        avaxAssetID = bintools.cb58Decode(avaxAssetID);
       }
 
-      return this.fee;
+      this.AVAXAssetID = avaxAssetID;
     };
     /**
-     * Sets the fee for this chain.
+     * Gets the default tx fee for this chain.
      *
-     * @param fee The fee amount to set as {@link https://github.com/indutny/bn.js/|BN}
+     * @returns The default tx fee as a {@link https://github.com/indutny/bn.js/|BN}
      */
 
 
-    this.setFee = fee => {
-      this.fee = fee;
+    this.getDefaultTxFee = () => {
+      return this.core.getNetworkID() in constants_1.Defaults.network ? new bn_js_1.default(constants_1.Defaults.network[this.core.getNetworkID()]["P"]["txFee"]) : new bn_js_1.default(0);
+    };
+    /**
+     * Gets the tx fee for this chain.
+     *
+     * @returns The tx fee as a {@link https://github.com/indutny/bn.js/|BN}
+     */
+
+
+    this.getTxFee = () => {
+      if (typeof this.txFee === "undefined") {
+        this.txFee = this.getDefaultTxFee();
+      }
+
+      return this.txFee;
+    };
+    /**
+     * Sets the tx fee for this chain.
+     *
+     * @param fee The tx fee amount to set as {@link https://github.com/indutny/bn.js/|BN}
+     */
+
+
+    this.setTxFee = fee => {
+      this.txFee = fee;
+    };
+    /**
+     * Gets the default creation fee for this chain.
+     *
+     * @returns The default creation fee as a {@link https://github.com/indutny/bn.js/|BN}
+     */
+
+
+    this.getDefaultCreationTxFee = () => {
+      return this.core.getNetworkID() in constants_1.Defaults.network ? new bn_js_1.default(constants_1.Defaults.network[this.core.getNetworkID()]["P"]["creationTxFee"]) : new bn_js_1.default(0);
+    };
+    /**
+     * Gets the creation fee for this chain.
+     *
+     * @returns The creation fee as a {@link https://github.com/indutny/bn.js/|BN}
+     */
+
+
+    this.getCreationTxFee = () => {
+      if (typeof this.creationTxFee === "undefined") {
+        this.creationTxFee = this.getDefaultCreationTxFee();
+      }
+
+      return this.creationTxFee;
+    };
+    /**
+     * Sets the creation fee for this chain.
+     *
+     * @param fee The creation fee amount to set as {@link https://github.com/indutny/bn.js/|BN}
+     */
+
+
+    this.setCreationTxFee = fee => {
+      this.creationTxFee = fee;
     };
     /**
      * Gets a reference to the keychain for this class.
@@ -6204,9 +9696,9 @@ class PlatformVMAPI extends jrpcapi_1.JRPCAPI {
      */
 
 
-    this.checkGooseEgg = utx => __awaiter(this, void 0, void 0, function* () {
+    this.checkGooseEgg = (utx, outTotal = new bn_js_1.default(0)) => __awaiter(this, void 0, void 0, function* () {
       const avaxAssetID = yield this.getAVAXAssetID();
-      let outputTotal = utx.getOutputTotal(avaxAssetID);
+      let outputTotal = outTotal.gt(new bn_js_1.default(0)) ? outTotal : utx.getOutputTotal(avaxAssetID);
       const fee = utx.getBurn(avaxAssetID);
 
       if (fee.lte(constants_1.ONEAVAX.mul(new bn_js_1.default(10))) || fee.lte(outputTotal)) {
@@ -6669,32 +10161,46 @@ class PlatformVMAPI extends jrpcapi_1.JRPCAPI {
       return this.callMethod('platform.getHeight', params).then(response => new bn_js_1.default(response.data.result.height, 10));
     });
     /**
-     * Sets the minimum stake cached in this class.
-     * @param minStake A {@link https://github.com/indutny/bn.js/|BN} to set the minimum stake amount cached in this class.
-     */
-
-
-    this.setMinStake = minStake => {
-      this.minStake = minStake;
-    };
-    /**
      * Gets the minimum staking amount.
      *
      * @param refresh A boolean to bypass the local cached value of Minimum Stake Amount, polling the node instead.
      */
 
 
-    this.getMinStake = (refresh = undefined) => __awaiter(this, void 0, void 0, function* () {
-      if (typeof this.minStake !== "undefined" && refresh !== false) {
-        return this.minStake;
+    this.getMinStake = (refresh = false) => __awaiter(this, void 0, void 0, function* () {
+      if (refresh !== true && typeof this.minValidatorStake !== "undefined" && typeof this.minDelegatorStake !== "undefined") {
+        return {
+          minValidatorStake: this.minValidatorStake,
+          minDelegatorStake: this.minDelegatorStake
+        };
       }
 
       const params = {};
       return this.callMethod('platform.getMinStake', params).then(response => {
-        this.minStake = new bn_js_1.default(response.data.result.minStake, 10);
-        return this.minStake;
+        this.minValidatorStake = new bn_js_1.default(response.data.result.minValidatorStake, 10);
+        this.minDelegatorStake = new bn_js_1.default(response.data.result.minDelegatorStake, 10);
+        return {
+          minValidatorStake: this.minValidatorStake,
+          minDelegatorStake: this.minDelegatorStake
+        };
       });
     });
+    /**
+     * Sets the minimum stake cached in this class.
+     * @param minValidatorStake A {@link https://github.com/indutny/bn.js/|BN} to set the minimum stake amount cached in this class.
+     * @param minDelegatorStake A {@link https://github.com/indutny/bn.js/|BN} to set the minimum delegation amount cached in this class.
+     */
+
+
+    this.setMinStake = (minValidatorStake = undefined, minDelegatorStake = undefined) => {
+      if (typeof minValidatorStake !== "undefined") {
+        this.minValidatorStake = minValidatorStake;
+      }
+
+      if (typeof minDelegatorStake !== "undefined") {
+        this.minDelegatorStake = minDelegatorStake;
+      }
+    };
     /**
      * Gets the total amount staked for an array of addresses.
      */
@@ -6782,16 +10288,18 @@ class PlatformVMAPI extends jrpcapi_1.JRPCAPI {
      * Returns the status of a provided transaction ID by calling the node's `getTxStatus` method.
      *
      * @param txid The string representation of the transaction ID
+     * @param includeReason Return the reason tx was dropped, if applicable. Defaults to true
      *
-     * @returns Returns a Promise<string> containing the status retrieved from the node
+     * @returns Returns a Promise<string> containing the status retrieved from the node and the reason a tx was dropped, if applicable.
      */
 
 
-    this.getTxStatus = txid => __awaiter(this, void 0, void 0, function* () {
+    this.getTxStatus = (txid, includeReason = true) => __awaiter(this, void 0, void 0, function* () {
       const params = {
-        txID: txid
+        txID: txid,
+        includeReason: includeReason
       };
-      return this.callMethod('platform.getTxStatus', params).then(response => response.data.result.status);
+      return this.callMethod('platform.getTxStatus', params).then(response => response.data.result);
     });
     /**
      * Retrieves the UTXOs related to the addresses provided from the node's `getUTXOs` method.
@@ -6802,8 +10310,6 @@ class PlatformVMAPI extends jrpcapi_1.JRPCAPI {
      * @param startIndex Optional. [StartIndex] defines where to start fetching UTXOs (for pagination.)
      * UTXOs fetched are from addresses equal to or greater than [StartIndex.Address]
      * For address [StartIndex.Address], only UTXOs with IDs greater than [StartIndex.Utxo] will be returned.
-     * @param assetID An assetID to filter on the recieved UTXOs
-     * @param typeID A number of the typeID to filter on the recieved UTXOs
      * @param persistOpts Options available to persist these UTXOs in local storage
      *
      * @remarks
@@ -6822,7 +10328,7 @@ class PlatformVMAPI extends jrpcapi_1.JRPCAPI {
         limit
       };
 
-      if (typeof startIndex !== "undefined") {
+      if (typeof startIndex !== "undefined" && startIndex) {
         params.startIndex = startIndex;
       }
 
@@ -6830,9 +10336,6 @@ class PlatformVMAPI extends jrpcapi_1.JRPCAPI {
         params.sourceChain = sourceChain;
       }
 
-      axios_1.default.interceptors.request.use(request => {
-        return request;
-      });
       return this.callMethod('platform.getUTXOs', params).then(response => {
         const utxos = new utxos_1.UTXOSet();
         let data = response.data.result.utxos;
@@ -6854,7 +10357,8 @@ class PlatformVMAPI extends jrpcapi_1.JRPCAPI {
         }
 
         utxos.addArray(data, false);
-        return utxos;
+        response.data.result.utxos = utxos;
+        return response.data.result;
       });
     });
     /**
@@ -6898,7 +10402,7 @@ class PlatformVMAPI extends jrpcapi_1.JRPCAPI {
         throw new Error("Error - PlatformVMAPI.buildImportTx: Invalid destinationChain type: " + typeof sourceChain);
       }
 
-      const atomicUTXOs = yield this.getUTXOs(ownerAddresses, srcChain, 0, undefined);
+      const atomicUTXOs = yield (yield this.getUTXOs(ownerAddresses, srcChain, 0, undefined)).utxos;
       const avaxAssetID = yield this.getAVAXAssetID();
 
       if (memo instanceof payload_1.PayloadBase) {
@@ -6906,7 +10410,7 @@ class PlatformVMAPI extends jrpcapi_1.JRPCAPI {
       }
 
       const atomics = atomicUTXOs.getAllUTXOs();
-      const builtUnsignedTx = utxoset.buildImportTx(this.core.getNetworkID(), bintools.cb58Decode(this.blockchainID), to, from, change, atomics, sourceChain, this.getFee(), avaxAssetID, memo, asOf, locktime, threshold);
+      const builtUnsignedTx = utxoset.buildImportTx(this.core.getNetworkID(), bintools.cb58Decode(this.blockchainID), to, from, change, atomics, sourceChain, this.getTxFee(), avaxAssetID, memo, asOf, locktime, threshold);
 
       if (!(yield this.checkGooseEgg(builtUnsignedTx))) {
         /* istanbul ignore next */
@@ -6955,10 +10459,11 @@ class PlatformVMAPI extends jrpcapi_1.JRPCAPI {
       if (destinationChain.length !== 32) {
         throw new Error("Error - PlatformVMAPI.buildExportTx: Destination ChainID must be 32 bytes in length.");
       }
-
-      if (bintools.cb58Encode(destinationChain) !== constants_1.Defaults.network[this.core.getNetworkID()].X["blockchainID"]) {
+      /*
+      if(bintools.cb58Encode(destinationChain) !== Defaults.network[this.core.getNetworkID()].X["blockchainID"]) {
         throw new Error("Error - PlatformVMAPI.buildExportTx: Destination ChainID must The X-Chain ID in the current version of AvalancheJS.");
-      }
+      }*/
+
 
       let to = [];
       toAddresses.map(a => {
@@ -6974,7 +10479,7 @@ class PlatformVMAPI extends jrpcapi_1.JRPCAPI {
       }
 
       const avaxAssetID = yield this.getAVAXAssetID();
-      const builtUnsignedTx = utxoset.buildExportTx(this.core.getNetworkID(), bintools.cb58Decode(this.blockchainID), amount, avaxAssetID, to, from, change, destinationChain, this.getFee(), avaxAssetID, memo, asOf, locktime, threshold);
+      const builtUnsignedTx = utxoset.buildExportTx(this.core.getNetworkID(), bintools.cb58Decode(this.blockchainID), amount, avaxAssetID, to, from, change, destinationChain, this.getTxFee(), avaxAssetID, memo, asOf, locktime, threshold);
 
       if (!(yield this.checkGooseEgg(builtUnsignedTx))) {
         /* istanbul ignore next */
@@ -7050,7 +10555,8 @@ class PlatformVMAPI extends jrpcapi_1.JRPCAPI {
     * [[UnsignedTx]] manually and import the [[AddDelegatorTx]] class directly.
     *
     * @param utxoset A set of UTXOs that the transaction is built on
-    * @param fromAddresses An array of addresses as {@link https://github.com/feross/buffer|Buffer} who pays the fees in AVAX
+    * @param toAddresses An array of addresses as {@link https://github.com/feross/buffer|Buffer} who recieved the staked tokens at the end of the staking period
+    * @param fromAddresses An array of addresses as {@link https://github.com/feross/buffer|Buffer} who own the staking UTXOs the fees in AVAX
     * @param changeAddresses An array of addresses as {@link https://github.com/feross/buffer|Buffer} who gets the change leftover from the fee payment
     * @param nodeID The node ID of the validator being added.
     * @param startTime The Unix time when the validator starts validating the Primary Network.
@@ -7066,7 +10572,9 @@ class PlatformVMAPI extends jrpcapi_1.JRPCAPI {
     */
 
 
-    this.buildAddDelegatorTx = (utxoset, fromAddresses, changeAddresses, nodeID, startTime, endTime, stakeAmount, rewardAddresses, rewardLocktime = new bn_js_1.default(0), rewardThreshold = 1, memo = undefined, asOf = helperfunctions_1.UnixNow()) => __awaiter(this, void 0, void 0, function* () {
+    this.buildAddDelegatorTx = (utxoset, toAddresses, fromAddresses, changeAddresses, nodeID, startTime, endTime, stakeAmount, rewardAddresses, rewardLocktime = new bn_js_1.default(0), rewardThreshold = 1, memo = undefined, asOf = helperfunctions_1.UnixNow()) => __awaiter(this, void 0, void 0, function* () {
+      const to = this._cleanAddressArray(toAddresses, 'buildAddDelegatorTx').map(a => bintools.stringToAddress(a));
+
       const from = this._cleanAddressArray(fromAddresses, 'buildAddDelegatorTx').map(a => bintools.stringToAddress(a));
 
       const change = this._cleanAddressArray(changeAddresses, 'buildAddDelegatorTx').map(a => bintools.stringToAddress(a));
@@ -7077,6 +10585,12 @@ class PlatformVMAPI extends jrpcapi_1.JRPCAPI {
         memo = memo.getPayload();
       }
 
+      const minStake = (yield this.getMinStake())["minDelegatorStake"];
+
+      if (stakeAmount.lt(minStake)) {
+        throw new Error("PlatformVMAPI.buildAddDelegatorTx -- stake amount must be at least " + minStake.toString(10));
+      }
+
       const avaxAssetID = yield this.getAVAXAssetID();
       const now = helperfunctions_1.UnixNow();
 
@@ -7084,7 +10598,7 @@ class PlatformVMAPI extends jrpcapi_1.JRPCAPI {
         throw new Error("PlatformVMAPI.buildAddDelegatorTx -- startTime must be in the future and endTime must come after startTime");
       }
 
-      const builtUnsignedTx = utxoset.buildAddDelegatorTx(this.core.getNetworkID(), bintools.cb58Decode(this.blockchainID), avaxAssetID, from, change, helperfunctions_1.NodeIDStringToBuffer(nodeID), startTime, endTime, stakeAmount, rewardLocktime, rewardThreshold, rewards, this.getFee(), avaxAssetID, memo, asOf);
+      const builtUnsignedTx = utxoset.buildAddDelegatorTx(this.core.getNetworkID(), bintools.cb58Decode(this.blockchainID), avaxAssetID, to, from, change, helperfunctions_1.NodeIDStringToBuffer(nodeID), startTime, endTime, stakeAmount, rewardLocktime, rewardThreshold, rewards, new bn_js_1.default(0), avaxAssetID, memo, asOf);
 
       if (!(yield this.checkGooseEgg(builtUnsignedTx))) {
         /* istanbul ignore next */
@@ -7098,7 +10612,8 @@ class PlatformVMAPI extends jrpcapi_1.JRPCAPI {
     * [[UnsignedTx]] manually and import the [[AddValidatorTx]] class directly.
     *
     * @param utxoset A set of UTXOs that the transaction is built on
-    * @param fromAddresses An array of addresses as {@link https://github.com/feross/buffer|Buffer} who pays the fees in AVAX
+    * @param toAddresses An array of addresses as {@link https://github.com/feross/buffer|Buffer} who recieved the staked tokens at the end of the staking period
+    * @param fromAddresses An array of addresses as {@link https://github.com/feross/buffer|Buffer} who own the staking UTXOs the fees in AVAX
     * @param changeAddresses An array of addresses as {@link https://github.com/feross/buffer|Buffer} who gets the change leftover from the fee payment
     * @param nodeID The node ID of the validator being added.
     * @param startTime The Unix time when the validator starts validating the Primary Network.
@@ -7115,7 +10630,9 @@ class PlatformVMAPI extends jrpcapi_1.JRPCAPI {
     */
 
 
-    this.buildAddValidatorTx = (utxoset, fromAddresses, changeAddresses, nodeID, startTime, endTime, stakeAmount, rewardAddresses, delegationFee, rewardLocktime = new bn_js_1.default(0), rewardThreshold = 1, memo = undefined, asOf = helperfunctions_1.UnixNow()) => __awaiter(this, void 0, void 0, function* () {
+    this.buildAddValidatorTx = (utxoset, toAddresses, fromAddresses, changeAddresses, nodeID, startTime, endTime, stakeAmount, rewardAddresses, delegationFee, rewardLocktime = new bn_js_1.default(0), rewardThreshold = 1, memo = undefined, asOf = helperfunctions_1.UnixNow()) => __awaiter(this, void 0, void 0, function* () {
+      const to = this._cleanAddressArray(toAddresses, 'buildAddValidatorTx').map(a => bintools.stringToAddress(a));
+
       const from = this._cleanAddressArray(fromAddresses, 'buildAddValidatorTx').map(a => bintools.stringToAddress(a));
 
       const change = this._cleanAddressArray(changeAddresses, 'buildAddValidatorTx').map(a => bintools.stringToAddress(a));
@@ -7126,7 +10643,7 @@ class PlatformVMAPI extends jrpcapi_1.JRPCAPI {
         memo = memo.getPayload();
       }
 
-      const minStake = yield this.getMinStake();
+      const minStake = (yield this.getMinStake())["minValidatorStake"];
 
       if (stakeAmount.lt(minStake)) {
         throw new Error("PlatformVMAPI.buildAddValidatorTx -- stake amount must be at least " + minStake.toString(10));
@@ -7143,7 +10660,7 @@ class PlatformVMAPI extends jrpcapi_1.JRPCAPI {
         throw new Error("PlatformVMAPI.buildAddValidatorTx -- startTime must be in the future and endTime must come after startTime");
       }
 
-      const builtUnsignedTx = utxoset.buildAddValidatorTx(this.core.getNetworkID(), bintools.cb58Decode(this.blockchainID), avaxAssetID, from, change, helperfunctions_1.NodeIDStringToBuffer(nodeID), startTime, endTime, stakeAmount, rewardLocktime, rewardThreshold, rewards, delegationFee, this.getFee(), avaxAssetID, memo, asOf);
+      const builtUnsignedTx = utxoset.buildAddValidatorTx(this.core.getNetworkID(), bintools.cb58Decode(this.blockchainID), avaxAssetID, to, from, change, helperfunctions_1.NodeIDStringToBuffer(nodeID), startTime, endTime, stakeAmount, rewardLocktime, rewardThreshold, rewards, delegationFee, new bn_js_1.default(0), avaxAssetID, memo, asOf);
 
       if (!(yield this.checkGooseEgg(builtUnsignedTx))) {
         /* istanbul ignore next */
@@ -7160,8 +10677,6 @@ class PlatformVMAPI extends jrpcapi_1.JRPCAPI {
       * @param changeAddresses The addresses that can spend the change remaining from the spent UTXOs
       * @param subnetOwnerAddresses An array of addresses for owners of the new subnet
       * @param subnetOwnerThreshold A number indicating the amount of signatures required to add validators to a subnet
-      * @param fee Optional. The amount of fees to burn in its smallest denomination, represented as {@link https://github.com/indutny/bn.js/|BN}
-      * @param feeAssetID Optional. The assetID of the fees being burned
       * @param memo Optional contains arbitrary bytes, up to 256 bytes
       * @param asOf Optional. The timestamp to verify the transaction against as a {@link https://github.com/indutny/bn.js/|BN}
       *
@@ -7181,9 +10696,9 @@ class PlatformVMAPI extends jrpcapi_1.JRPCAPI {
       }
 
       const avaxAssetID = yield this.getAVAXAssetID();
-      const builtUnsignedTx = utxoset.buildCreateSubnetTx(this.core.getNetworkID(), bintools.cb58Decode(this.blockchainID), from, change, owners, subnetOwnerThreshold, this.getFee(), avaxAssetID, memo, asOf);
+      const builtUnsignedTx = utxoset.buildCreateSubnetTx(this.core.getNetworkID(), bintools.cb58Decode(this.blockchainID), from, change, owners, subnetOwnerThreshold, this.getCreationTxFee(), avaxAssetID, memo, asOf);
 
-      if (!(yield this.checkGooseEgg(builtUnsignedTx))) {
+      if (!(yield this.checkGooseEgg(builtUnsignedTx, this.getCreationTxFee()))) {
         /* istanbul ignore next */
         throw new Error("Failed Goose Egg Check");
       }
@@ -7280,12 +10795,15 @@ const credentials_2 = __webpack_require__(/*! ../../common/credentials */ "./nod
 const constants_2 = __webpack_require__(/*! ../../utils/constants */ "./node_modules/avalanche/dist/utils/constants.js");
 
 const tx_2 = __webpack_require__(/*! ../platformvm/tx */ "./node_modules/avalanche/dist/apis/platformvm/tx.js");
+
+const serialization_1 = __webpack_require__(/*! ../../utils/serialization */ "./node_modules/avalanche/dist/utils/serialization.js");
 /**
  * @ignore
  */
 
 
 const bintools = bintools_1.default.getInstance();
+const serializer = serialization_1.Serialization.getInstance();
 /**
  * Class representing a base for all transactions.
  */
@@ -7302,6 +10820,8 @@ class BaseTx extends tx_1.StandardBaseTx {
    */
   constructor(networkid = constants_2.DefaultNetworkID, blockchainid = buffer_1.Buffer.alloc(32, 16), outs = undefined, ins = undefined, memo = undefined) {
     super(networkid, blockchainid, outs, ins, memo);
+    this._typeName = "BaseTx";
+    this._typeID = constants_1.PlatformVMConstants.CREATESUBNETTX;
     /**
      * Returns the id of the [[BaseTx]]
      */
@@ -7309,6 +10829,36 @@ class BaseTx extends tx_1.StandardBaseTx {
     this.getTxType = () => {
       return constants_1.PlatformVMConstants.BASETX;
     };
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.outs = fields["outs"].map(o => {
+      let newOut = new outputs_1.TransferableOutput();
+      newOut.deserialize(o, encoding);
+      return newOut;
+    });
+    this.ins = fields["ins"].map(i => {
+      let newIn = new inputs_1.TransferableInput();
+      newIn.deserialize(i, encoding);
+      return newIn;
+    });
+    this.numouts = buffer_1.Buffer.alloc(4);
+    this.numouts.writeUInt32BE(this.outs.length, 0);
+    this.numins = buffer_1.Buffer.alloc(4);
+    this.numins.writeUInt32BE(this.ins.length, 0);
+  }
+
+  getOuts() {
+    return this.outs;
+  }
+
+  getIns() {
+    return this.ins;
+  }
+
+  getTotalOuts() {
+    return this.getOuts();
   }
   /**
    * Takes a {@link https://github.com/feross/buffer|Buffer} containing an [[BaseTx]], parses it, populates the class, and returns the length of the BaseTx in bytes.
@@ -7353,10 +10903,6 @@ class BaseTx extends tx_1.StandardBaseTx {
     this.memo = bintools.copyFrom(bytes, offset, offset + memolen);
     offset += memolen;
     return offset;
-  }
-
-  getTotalOuts() {
-    return this.getOuts();
   }
   /**
    * Takes the bytes of an [[UnsignedTx]] and returns an array of [[Credential]]s
@@ -7437,7 +10983,10 @@ PlatformVMConstants.SECPFXID = 0;
 PlatformVMConstants.SECPXFEROUTPUTID = 7;
 PlatformVMConstants.SUBNETAUTHID = 10;
 PlatformVMConstants.SECPOWNEROUTPUTID = 11;
+PlatformVMConstants.STAKEABLELOCKOUTID = 22;
 PlatformVMConstants.SECPINPUTID = 5;
+PlatformVMConstants.STAKEABLELOCKINID = 21;
+PlatformVMConstants.LOCKEDSTAKEABLES = [PlatformVMConstants.STAKEABLELOCKINID, PlatformVMConstants.STAKEABLELOCKOUTID];
 PlatformVMConstants.BASETX = 0;
 PlatformVMConstants.ADDVALIDATORTX = 12;
 PlatformVMConstants.ADDSUBNETVALIDATORTX = 13;
@@ -7486,6 +11035,10 @@ const constants_2 = __webpack_require__(/*! ../../utils/constants */ "./node_mod
 
 const outputs_1 = __webpack_require__(/*! ./outputs */ "./node_modules/avalanche/dist/apis/platformvm/outputs.js");
 
+const serialization_1 = __webpack_require__(/*! ../../utils/serialization */ "./node_modules/avalanche/dist/utils/serialization.js");
+
+const serializer = serialization_1.Serialization.getInstance();
+
 class CreateSubnetTx extends basetx_1.BaseTx {
   /**
    * Class representing an unsigned Create Subnet transaction.
@@ -7499,16 +11052,31 @@ class CreateSubnetTx extends basetx_1.BaseTx {
   */
   constructor(networkid = constants_2.DefaultNetworkID, blockchainid = buffer_1.Buffer.alloc(32, 16), outs = undefined, ins = undefined, memo = undefined, subnetOwners = undefined) {
     super(networkid, blockchainid, outs, ins, memo);
+    this._typeName = "SECPCredential";
+    this._typeID = constants_1.PlatformVMConstants.CREATESUBNETTX;
     this.subnetOwners = undefined;
     /**
      * Returns the id of the [[CreateSubnetTx]]
      */
 
     this.getTxType = () => {
-      return constants_1.PlatformVMConstants.CREATESUBNETTX;
+      return this._typeID;
     };
 
     this.subnetOwners = subnetOwners;
+  }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "subnetOwners": this.subnetOwners.serialize(encoding)
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.subnetOwners = new outputs_1.SECPOwnerOutput();
+    this.subnetOwners.deserialize(fields["subnetOwners"], encoding);
   }
   /**
    * Returns a {@link https://github.com/feross/buffer|Buffer} for the reward address.
@@ -7567,34 +11135,19 @@ exports.CreateSubnetTx = CreateSubnetTx;
 
 "use strict";
 
-
-var __importDefault = this && this.__importDefault || function (mod) {
-  return mod && mod.__esModule ? mod : {
-    "default": mod
-  };
-};
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.SECPCredential = exports.SelectCredentialClass = void 0;
 /**
  * @packageDocumentation
  * @module API-PlatformVM-Credentials
  */
 
-const bintools_1 = __importDefault(__webpack_require__(/*! ../../utils/bintools */ "./node_modules/avalanche/dist/utils/bintools.js"));
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.SECPCredential = exports.SelectCredentialClass = void 0;
 
 const constants_1 = __webpack_require__(/*! ./constants */ "./node_modules/avalanche/dist/apis/platformvm/constants.js");
 
 const credentials_1 = __webpack_require__(/*! ../../common/credentials */ "./node_modules/avalanche/dist/common/credentials.js");
-
-credentials_1.Signature;
-/**
- * @ignore
- */
-
-const bintools = bintools_1.default.getInstance();
 /**
  * Takes a buffer representing the credential and returns the proper [[Credential]] instance.
  *
@@ -7603,10 +11156,10 @@ const bintools = bintools_1.default.getInstance();
  * @returns An instance of an [[Credential]]-extended class.
  */
 
+
 exports.SelectCredentialClass = (credid, ...args) => {
   if (credid === constants_1.PlatformVMConstants.SECPCREDENTIAL) {
-    const secpcred = new SECPCredential(...args);
-    return secpcred;
+    return new SECPCredential(...args);
   }
   /* istanbul ignore next */
 
@@ -7615,8 +11168,15 @@ exports.SelectCredentialClass = (credid, ...args) => {
 };
 
 class SECPCredential extends credentials_1.Credential {
+  constructor() {
+    super(...arguments);
+    this._typeName = "SECPCredential";
+    this._typeID = constants_1.PlatformVMConstants.SECPCREDENTIAL;
+  } //serialize and deserialize both are inherited
+
+
   getCredentialID() {
-    return constants_1.PlatformVMConstants.SECPCREDENTIAL;
+    return this._typeID;
   }
 
   clone() {
@@ -7678,12 +11238,15 @@ const basetx_1 = __webpack_require__(/*! ./basetx */ "./node_modules/avalanche/d
 const constants_2 = __webpack_require__(/*! ../../utils/constants */ "./node_modules/avalanche/dist/utils/constants.js");
 
 const bn_js_1 = __importDefault(__webpack_require__(/*! bn.js */ "./node_modules/avalanche/node_modules/bn.js/lib/bn.js"));
+
+const serialization_1 = __webpack_require__(/*! ../../utils/serialization */ "./node_modules/avalanche/dist/utils/serialization.js");
 /**
  * @ignore
  */
 
 
 const bintools = bintools_1.default.getInstance();
+const serializer = serialization_1.Serialization.getInstance();
 /**
  * Class representing an unsigned Export transaction.
  */
@@ -7702,6 +11265,8 @@ class ExportTx extends basetx_1.BaseTx {
    */
   constructor(networkid = constants_2.DefaultNetworkID, blockchainid = buffer_1.Buffer.alloc(32, 16), outs = undefined, ins = undefined, memo = undefined, destinationChain = undefined, exportOuts = undefined) {
     super(networkid, blockchainid, outs, ins, memo);
+    this._typeName = "ExportTx";
+    this._typeID = constants_1.PlatformVMConstants.EXPORTTX;
     this.destinationChain = buffer_1.Buffer.alloc(32);
     this.numOuts = buffer_1.Buffer.alloc(4);
     this.exportOuts = [];
@@ -7724,6 +11289,26 @@ class ExportTx extends basetx_1.BaseTx {
 
       this.exportOuts = exportOuts;
     }
+  }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "destinationChain": serializer.encoder(this.destinationChain, encoding, "Buffer", "cb58"),
+      "exportOuts": this.exportOuts.map(e => e.serialize(encoding))
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.destinationChain = serializer.decoder(fields["destinationChain"], encoding, "cb58", "Buffer", 32);
+    this.exportOuts = fields["exportOuts"].map(e => {
+      let eo = new outputs_1.TransferableOutput();
+      eo.deserialize(e, encoding);
+      return eo;
+    });
+    this.numOuts = buffer_1.Buffer.alloc(4);
+    this.numOuts.writeUInt32BE(this.exportOuts.length, 0);
   }
   /**
    * Returns an array of [[TransferableOutput]]s in this transaction.
@@ -7837,7 +11422,7 @@ Object.defineProperty(exports, "__esModule", {
 exports.ImportTx = void 0;
 /**
  * @packageDocumentation
- * @module API-PlatformVM-ExportTx
+ * @module API-PlatformVM-ImportTx
  */
 
 const buffer_1 = __webpack_require__(/*! buffer/ */ "./node_modules/node-libs-browser/node_modules/buffer/index.js");
@@ -7855,12 +11440,15 @@ const credentials_2 = __webpack_require__(/*! ../../common/credentials */ "./nod
 const basetx_1 = __webpack_require__(/*! ./basetx */ "./node_modules/avalanche/dist/apis/platformvm/basetx.js");
 
 const constants_2 = __webpack_require__(/*! ../../utils/constants */ "./node_modules/avalanche/dist/utils/constants.js");
+
+const serialization_1 = __webpack_require__(/*! ../../utils/serialization */ "./node_modules/avalanche/dist/utils/serialization.js");
 /**
  * @ignore
  */
 
 
 const bintools = bintools_1.default.getInstance();
+const serializer = serialization_1.Serialization.getInstance();
 /**
  * Class representing an unsigned Import transaction.
  */
@@ -7879,6 +11467,8 @@ class ImportTx extends basetx_1.BaseTx {
    */
   constructor(networkid = constants_2.DefaultNetworkID, blockchainid = buffer_1.Buffer.alloc(32, 16), outs = undefined, ins = undefined, memo = undefined, sourceChain = undefined, importIns = undefined) {
     super(networkid, blockchainid, outs, ins, memo);
+    this._typeName = "ImportTx";
+    this._typeID = constants_1.PlatformVMConstants.IMPORTTX;
     this.sourceChain = buffer_1.Buffer.alloc(32);
     this.numIns = buffer_1.Buffer.alloc(4);
     this.importIns = [];
@@ -7887,7 +11477,7 @@ class ImportTx extends basetx_1.BaseTx {
        */
 
     this.getTxType = () => {
-      return constants_1.PlatformVMConstants.IMPORTTX;
+      return this._typeID;
     };
 
     this.sourceChain = sourceChain; // do no correct, if it's wrong it'll bomb on toBuffer
@@ -7901,6 +11491,26 @@ class ImportTx extends basetx_1.BaseTx {
 
       this.importIns = importIns;
     }
+  }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "sourceChain": serializer.encoder(this.sourceChain, encoding, "Buffer", "cb58"),
+      "importIns": this.importIns.map(i => i.serialize(encoding))
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.sourceChain = serializer.decoder(fields["sourceChain"], encoding, "cb58", "Buffer", 32);
+    this.importIns = fields["importIns"].map(i => {
+      let ii = new inputs_1.TransferableInput();
+      ii.deserialize(i, encoding);
+      return ii;
+    });
+    this.numIns = buffer_1.Buffer.alloc(4);
+    this.numIns.writeUInt32BE(this.importIns.length, 0);
   }
   /**
      * Takes a {@link https://github.com/feross/buffer|Buffer} containing an [[ImportTx]], parses it, populates the class, and returns the length of the [[ImportTx]] in bytes.
@@ -8082,19 +11692,28 @@ var __importDefault = this && this.__importDefault || function (mod) {
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.SECPTransferInput = exports.AmountInput = exports.TransferableInput = exports.SelectInputClass = void 0;
+exports.StakeableLockIn = exports.SECPTransferInput = exports.AmountInput = exports.TransferableInput = exports.ParseableInput = exports.SelectInputClass = void 0;
+/**
+ * @packageDocumentation
+ * @module API-PlatformVM-Inputs
+ */
+
+const buffer_1 = __webpack_require__(/*! buffer/ */ "./node_modules/node-libs-browser/node_modules/buffer/index.js");
 
 const bintools_1 = __importDefault(__webpack_require__(/*! ../../utils/bintools */ "./node_modules/avalanche/dist/utils/bintools.js"));
 
 const constants_1 = __webpack_require__(/*! ./constants */ "./node_modules/avalanche/dist/apis/platformvm/constants.js");
 
 const input_1 = __webpack_require__(/*! ../../common/input */ "./node_modules/avalanche/dist/common/input.js");
+
+const serialization_1 = __webpack_require__(/*! ../../utils/serialization */ "./node_modules/avalanche/dist/utils/serialization.js");
 /**
  * @ignore
  */
 
 
 const bintools = bintools_1.default.getInstance();
+const serializer = serialization_1.Serialization.getInstance();
 /**
  * Takes a buffer representing the output and returns the proper [[Input]] instance.
  *
@@ -8105,8 +11724,9 @@ const bintools = bintools_1.default.getInstance();
 
 exports.SelectInputClass = (inputid, ...args) => {
   if (inputid === constants_1.PlatformVMConstants.SECPINPUTID) {
-    const secpin = new SECPTransferInput(...args);
-    return secpin;
+    return new SECPTransferInput(...args);
+  } else if (inputid === constants_1.PlatformVMConstants.STAKEABLELOCKINID) {
+    return new StakeableLockIn(...args);
   }
   /* istanbul ignore next */
 
@@ -8114,7 +11734,44 @@ exports.SelectInputClass = (inputid, ...args) => {
   throw new Error(`Error - SelectInputClass: unknown inputid ${inputid}`);
 };
 
+class ParseableInput extends input_1.StandardParseableInput {
+  constructor() {
+    super(...arguments);
+    this._typeName = "ParseableInput";
+    this._typeID = undefined;
+  } //serialize is inherited
+
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.input = exports.SelectInputClass(fields["input"]["_typeID"]);
+    this.input.deserialize(fields["input"], encoding);
+  }
+
+  fromBuffer(bytes, offset = 0) {
+    const inputid = bintools.copyFrom(bytes, offset, offset + 4).readUInt32BE(0);
+    offset += 4;
+    this.input = exports.SelectInputClass(inputid);
+    return this.input.fromBuffer(bytes, offset);
+  }
+
+}
+
+exports.ParseableInput = ParseableInput;
+
 class TransferableInput extends input_1.StandardTransferableInput {
+  constructor() {
+    super(...arguments);
+    this._typeName = "TransferableInput";
+    this._typeID = undefined;
+  } //serialize is inherited
+
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.input = exports.SelectInputClass(fields["input"]["_typeID"]);
+    this.input.deserialize(fields["input"], encoding);
+  }
   /**
    * Takes a {@link https://github.com/feross/buffer|Buffer} containing a [[TransferableInput]], parses it, populates the class, and returns the length of the [[TransferableInput]] in bytes.
    *
@@ -8122,6 +11779,8 @@ class TransferableInput extends input_1.StandardTransferableInput {
    *
    * @returns The length of the raw [[TransferableInput]]
    */
+
+
   fromBuffer(bytes, offset = 0) {
     this.txid = bintools.copyFrom(bytes, offset, offset + 32);
     offset += 32;
@@ -8140,6 +11799,13 @@ class TransferableInput extends input_1.StandardTransferableInput {
 exports.TransferableInput = TransferableInput;
 
 class AmountInput extends input_1.StandardAmountInput {
+  constructor() {
+    super(...arguments);
+    this._typeName = "AmountInput";
+    this._typeID = undefined;
+  } //serialize and deserialize both are inherited
+
+
   select(id, ...args) {
     return exports.SelectInputClass(id, ...args);
   }
@@ -8151,16 +11817,19 @@ exports.AmountInput = AmountInput;
 class SECPTransferInput extends AmountInput {
   constructor() {
     super(...arguments);
+    this._typeName = "SECPTransferInput";
+    this._typeID = constants_1.PlatformVMConstants.SECPINPUTID;
 
     this.getCredentialID = () => constants_1.PlatformVMConstants.SECPCREDENTIAL;
-  }
+  } //serialize and deserialize both are inherited
+
   /**
-     * Returns the inputID for this input
-     */
+   * Returns the inputID for this input
+   */
 
 
   getInputID() {
-    return constants_1.PlatformVMConstants.SECPINPUTID;
+    return this._typeID;
   }
 
   create(...args) {
@@ -8176,6 +11845,125 @@ class SECPTransferInput extends AmountInput {
 }
 
 exports.SECPTransferInput = SECPTransferInput;
+/**
+ * An [[Input]] class which specifies an input that has a locktime which can also enable staking of the value held, preventing transfers but not validation.
+ */
+
+class StakeableLockIn extends AmountInput {
+  /**
+   * A [[Output]] class which specifies an [[Input]] that has a locktime which can also enable staking of the value held, preventing transfers but not validation.
+   *
+   * @param amount A {@link https://github.com/indutny/bn.js/|BN} representing the amount in the input
+   * @param stakeableLocktime A {@link https://github.com/indutny/bn.js/|BN} representing the stakeable locktime
+   * @param transferableInput A [[ParseableInput]] which is embedded into this input.
+   */
+  constructor(amount = undefined, stakeableLocktime = undefined, transferableInput = undefined) {
+    super(amount);
+    this._typeName = "StakeableLockIn";
+    this._typeID = constants_1.PlatformVMConstants.STAKEABLELOCKINID;
+
+    this.getCredentialID = () => constants_1.PlatformVMConstants.SECPCREDENTIAL;
+
+    if (typeof stakeableLocktime !== "undefined") {
+      this.stakeableLocktime = bintools.fromBNToBuffer(stakeableLocktime, 8);
+    }
+
+    if (typeof transferableInput !== "undefined") {
+      this.transferableInput = transferableInput;
+      this.synchronize();
+    }
+  } //serialize and deserialize both are inherited
+
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    let outobj = Object.assign(Object.assign({}, fields), {
+      "stakeableLocktime": serializer.encoder(this.stakeableLocktime, encoding, "Buffer", "decimalString", 8),
+      "transferableInput": this.transferableInput.serialize(encoding)
+    });
+    delete outobj["sigIdxs"];
+    delete outobj["sigCount"];
+    delete outobj["amount"];
+    return outobj;
+  }
+
+  deserialize(fields, encoding = "hex") {
+    fields["sigIdxs"] = [];
+    fields["sigCount"] = "0";
+    fields["amount"] = "98";
+    super.deserialize(fields, encoding);
+    this.stakeableLocktime = serializer.decoder(fields["stakeableLocktime"], encoding, "decimalString", "Buffer", 8);
+    this.transferableInput = new ParseableInput();
+    this.transferableInput.deserialize(fields["transferableInput"], encoding);
+    this.synchronize();
+  }
+
+  synchronize() {
+    let input = this.transferableInput.getInput();
+    this.sigIdxs = input.getSigIdxs();
+    this.sigCount = buffer_1.Buffer.alloc(4);
+    this.sigCount.writeUInt32BE(this.sigIdxs.length, 0);
+    this.amount = bintools.fromBNToBuffer(input.getAmount(), 8);
+    this.amountValue = input.getAmount();
+  }
+
+  getStakeableLocktime() {
+    return bintools.fromBufferToBN(this.stakeableLocktime);
+  }
+
+  getTransferablInput() {
+    return this.transferableInput;
+  }
+  /**
+   * Returns the inputID for this input
+   */
+
+
+  getInputID() {
+    return this._typeID;
+  }
+  /**
+   * Popuates the instance from a {@link https://github.com/feross/buffer|Buffer} representing the [[StakeableLockIn]] and returns the size of the output.
+   */
+
+
+  fromBuffer(bytes, offset = 0) {
+    this.stakeableLocktime = bintools.copyFrom(bytes, offset, offset + 8);
+    offset += 8;
+    this.transferableInput = new ParseableInput();
+    offset = this.transferableInput.fromBuffer(bytes, offset);
+    this.synchronize();
+    return offset;
+  }
+  /**
+   * Returns the buffer representing the [[StakeableLockIn]] instance.
+   */
+
+
+  toBuffer() {
+    const xferinBuff = this.transferableInput.toBuffer();
+    const bsize = this.stakeableLocktime.length + xferinBuff.length;
+    const barr = [this.stakeableLocktime, xferinBuff];
+    return buffer_1.Buffer.concat(barr, bsize);
+  }
+
+  create(...args) {
+    return new StakeableLockIn(...args);
+  }
+
+  clone() {
+    const newout = this.create();
+    newout.fromBuffer(this.toBuffer());
+    return newout;
+  }
+
+  select(id, ...args) {
+    return exports.SelectInputClass(id, ...args);
+  }
+
+}
+
+exports.StakeableLockIn = StakeableLockIn;
 
 /***/ }),
 
@@ -8402,7 +12190,13 @@ var __importDefault = this && this.__importDefault || function (mod) {
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.SECPOwnerOutput = exports.SECPTransferOutput = exports.AmountOutput = exports.ParseableOutput = exports.TransferableOutput = exports.SelectOutputClass = void 0;
+exports.SECPOwnerOutput = exports.StakeableLockOut = exports.SECPTransferOutput = exports.AmountOutput = exports.ParseableOutput = exports.TransferableOutput = exports.SelectOutputClass = void 0;
+/**
+ * @packageDocumentation
+ * @module API-PlatformVM-Outputs
+ */
+
+const buffer_1 = __webpack_require__(/*! buffer/ */ "./node_modules/node-libs-browser/node_modules/buffer/index.js");
 
 const bintools_1 = __importDefault(__webpack_require__(/*! ../../utils/bintools */ "./node_modules/avalanche/dist/utils/bintools.js"));
 
@@ -8410,7 +12204,10 @@ const constants_1 = __webpack_require__(/*! ./constants */ "./node_modules/avala
 
 const output_1 = __webpack_require__(/*! ../../common/output */ "./node_modules/avalanche/dist/common/output.js");
 
+const serialization_1 = __webpack_require__(/*! ../../utils/serialization */ "./node_modules/avalanche/dist/utils/serialization.js");
+
 const bintools = bintools_1.default.getInstance();
+const serializer = serialization_1.Serialization.getInstance();
 /**
  * Takes a buffer representing the output and returns the proper Output instance.
  *
@@ -8424,12 +12221,27 @@ exports.SelectOutputClass = (outputid, ...args) => {
     return new SECPTransferOutput(...args);
   } else if (outputid == constants_1.PlatformVMConstants.SECPOWNEROUTPUTID) {
     return new SECPOwnerOutput(...args);
+  } else if (outputid == constants_1.PlatformVMConstants.STAKEABLELOCKOUTID) {
+    return new StakeableLockOut(...args);
   }
 
   throw new Error("Error - SelectOutputClass: unknown outputid " + outputid);
 };
 
 class TransferableOutput extends output_1.StandardTransferableOutput {
+  constructor() {
+    super(...arguments);
+    this._typeName = "TransferableOutput";
+    this._typeID = undefined;
+  } //serialize is inherited
+
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.output = exports.SelectOutputClass(fields["output"]["_typeID"]);
+    this.output.deserialize(fields["output"], encoding);
+  }
+
   fromBuffer(bytes, offset = 0) {
     this.assetID = bintools.copyFrom(bytes, offset, offset + constants_1.PlatformVMConstants.ASSETIDLEN);
     offset += constants_1.PlatformVMConstants.ASSETIDLEN;
@@ -8444,6 +12256,19 @@ class TransferableOutput extends output_1.StandardTransferableOutput {
 exports.TransferableOutput = TransferableOutput;
 
 class ParseableOutput extends output_1.StandardParseableOutput {
+  constructor() {
+    super(...arguments);
+    this._typeName = "ParseableOutput";
+    this._typeID = undefined;
+  } //serialize is inherited
+
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.output = exports.SelectOutputClass(fields["output"]["_typeID"]);
+    this.output.deserialize(fields["output"], encoding);
+  }
+
   fromBuffer(bytes, offset = 0) {
     const outputid = bintools.copyFrom(bytes, offset, offset + 4).readUInt32BE(0);
     offset += 4;
@@ -8456,10 +12281,17 @@ class ParseableOutput extends output_1.StandardParseableOutput {
 exports.ParseableOutput = ParseableOutput;
 
 class AmountOutput extends output_1.StandardAmountOutput {
+  constructor() {
+    super(...arguments);
+    this._typeName = "AmountOutput";
+    this._typeID = undefined;
+  } //serialize and deserialize both are inherited
+
   /**
-   *
    * @param assetID An assetID which is wrapped around the Buffer of the Output
    */
+
+
   makeTransferable(assetID) {
     return new TransferableOutput(assetID, this);
   }
@@ -8476,11 +12308,19 @@ exports.AmountOutput = AmountOutput;
  */
 
 class SECPTransferOutput extends AmountOutput {
+  constructor() {
+    super(...arguments);
+    this._typeName = "SECPTransferOutput";
+    this._typeID = constants_1.PlatformVMConstants.SECPXFEROUTPUTID;
+  } //serialize and deserialize both are inherited
+
   /**
-     * Returns the outputID for this output
-     */
+   * Returns the outputID for this output
+   */
+
+
   getOutputID() {
-    return constants_1.PlatformVMConstants.SECPXFEROUTPUTID;
+    return this._typeID;
   }
 
   create(...args) {
@@ -8497,15 +12337,161 @@ class SECPTransferOutput extends AmountOutput {
 
 exports.SECPTransferOutput = SECPTransferOutput;
 /**
+ * An [[Output]] class which specifies an input that has a locktime which can also enable staking of the value held, preventing transfers but not validation.
+ */
+
+class StakeableLockOut extends AmountOutput {
+  /**
+   * A [[Output]] class which specifies a [[ParseableOutput]] that has a locktime which can also enable staking of the value held, preventing transfers but not validation.
+   *
+   * @param amount A {@link https://github.com/indutny/bn.js/|BN} representing the amount in the output
+   * @param addresses An array of {@link https://github.com/feross/buffer|Buffer}s representing addresses
+   * @param locktime A {@link https://github.com/indutny/bn.js/|BN} representing the locktime
+   * @param threshold A number representing the the threshold number of signers required to sign the transaction
+   * @param stakeableLocktime A {@link https://github.com/indutny/bn.js/|BN} representing the stakeable locktime
+   * @param transferableOutput A [[ParseableOutput]] which is embedded into this output.
+   */
+  constructor(amount = undefined, addresses = undefined, locktime = undefined, threshold = undefined, stakeableLocktime = undefined, transferableOutput = undefined) {
+    super(amount, addresses, locktime, threshold);
+    this._typeName = "StakeableLockOut";
+    this._typeID = constants_1.PlatformVMConstants.STAKEABLELOCKOUTID;
+
+    if (typeof stakeableLocktime !== "undefined") {
+      this.stakeableLocktime = bintools.fromBNToBuffer(stakeableLocktime, 8);
+    }
+
+    if (typeof transferableOutput !== "undefined") {
+      this.transferableOutput = transferableOutput;
+      this.synchronize();
+    }
+  } //serialize and deserialize both are inherited
+
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    let outobj = Object.assign(Object.assign({}, fields), {
+      "stakeableLocktime": serializer.encoder(this.stakeableLocktime, encoding, "Buffer", "decimalString", 8),
+      "transferableOutput": this.transferableOutput.serialize(encoding)
+    });
+    delete outobj["addresses"];
+    delete outobj["locktime"];
+    delete outobj["threshold"];
+    delete outobj["amount"];
+    return outobj;
+  }
+
+  deserialize(fields, encoding = "hex") {
+    fields["addresses"] = [];
+    fields["locktime"] = "0";
+    fields["threshold"] = "1";
+    fields["amount"] = "99";
+    super.deserialize(fields, encoding);
+    this.stakeableLocktime = serializer.decoder(fields["stakeableLocktime"], encoding, "decimalString", "Buffer", 8);
+    this.transferableOutput = new ParseableOutput();
+    this.transferableOutput.deserialize(fields["transferableOutput"], encoding);
+    this.synchronize();
+  } //call this every time you load in data
+
+
+  synchronize() {
+    let output = this.transferableOutput.getOutput();
+    this.addresses = output.getAddresses().map(a => {
+      let addr = new output_1.Address();
+      addr.fromBuffer(a);
+      return addr;
+    });
+    this.numaddrs = buffer_1.Buffer.alloc(4);
+    this.numaddrs.writeUInt32BE(this.addresses.length, 0);
+    this.locktime = bintools.fromBNToBuffer(output.getLocktime(), 8);
+    this.threshold = buffer_1.Buffer.alloc(4);
+    this.threshold.writeUInt32BE(output.getThreshold(), 0);
+    this.amount = bintools.fromBNToBuffer(output.getAmount(), 8);
+    this.amountValue = output.getAmount();
+  }
+
+  getStakeableLocktime() {
+    return bintools.fromBufferToBN(this.stakeableLocktime);
+  }
+
+  getTransferableOutput() {
+    return this.transferableOutput;
+  }
+  /**
+   * @param assetID An assetID which is wrapped around the Buffer of the Output
+   */
+
+
+  makeTransferable(assetID) {
+    return new TransferableOutput(assetID, this);
+  }
+
+  select(id, ...args) {
+    return exports.SelectOutputClass(id, ...args);
+  }
+  /**
+   * Popuates the instance from a {@link https://github.com/feross/buffer|Buffer} representing the [[StakeableLockOut]] and returns the size of the output.
+   */
+
+
+  fromBuffer(outbuff, offset = 0) {
+    this.stakeableLocktime = bintools.copyFrom(outbuff, offset, offset + 8);
+    offset += 8;
+    this.transferableOutput = new ParseableOutput();
+    offset = this.transferableOutput.fromBuffer(outbuff, offset);
+    this.synchronize();
+    return offset;
+  }
+  /**
+   * Returns the buffer representing the [[StakeableLockOut]] instance.
+   */
+
+
+  toBuffer() {
+    let xferoutBuff = this.transferableOutput.toBuffer();
+    const bsize = this.stakeableLocktime.length + xferoutBuff.length;
+    const barr = [this.stakeableLocktime, xferoutBuff];
+    return buffer_1.Buffer.concat(barr, bsize);
+  }
+  /**
+   * Returns the outputID for this output
+   */
+
+
+  getOutputID() {
+    return this._typeID;
+  }
+
+  create(...args) {
+    return new StakeableLockOut(...args);
+  }
+
+  clone() {
+    const newout = this.create();
+    newout.fromBuffer(this.toBuffer());
+    return newout;
+  }
+
+}
+
+exports.StakeableLockOut = StakeableLockOut;
+/**
  * An [[Output]] class which only specifies an Output ownership and uses secp256k1 signature scheme.
  */
 
 class SECPOwnerOutput extends output_1.Output {
+  constructor() {
+    super(...arguments);
+    this._typeName = "SECPOwnerOutput";
+    this._typeID = constants_1.PlatformVMConstants.SECPOWNEROUTPUTID;
+  } //serialize and deserialize both are inherited
+
   /**
-     * Returns the outputID for this output
-     */
+   * Returns the outputID for this output
+   */
+
+
   getOutputID() {
-    return constants_1.PlatformVMConstants.SECPOWNEROUTPUTID;
+    return this._typeID;
   }
   /**
    *
@@ -8556,7 +12542,7 @@ var __importDefault = this && this.__importDefault || function (mod) {
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.SelectTxClass = exports.Tx = exports.UnsignedTx = void 0;
+exports.Tx = exports.UnsignedTx = exports.SelectTxClass = void 0;
 /**
  * @packageDocumentation
  * @module API-PlatformVM-Transactions
@@ -8579,14 +12565,65 @@ const basetx_1 = __webpack_require__(/*! ./basetx */ "./node_modules/avalanche/d
 const importtx_1 = __webpack_require__(/*! ./importtx */ "./node_modules/avalanche/dist/apis/platformvm/importtx.js");
 
 const exporttx_1 = __webpack_require__(/*! ./exporttx */ "./node_modules/avalanche/dist/apis/platformvm/exporttx.js");
+
+const serialization_1 = __webpack_require__(/*! ../../utils/serialization */ "./node_modules/avalanche/dist/utils/serialization.js");
+
+const validationtx_1 = __webpack_require__(/*! ./validationtx */ "./node_modules/avalanche/dist/apis/platformvm/validationtx.js");
+
+const createsubnettx_1 = __webpack_require__(/*! ./createsubnettx */ "./node_modules/avalanche/dist/apis/platformvm/createsubnettx.js");
 /**
  * @ignore
  */
 
 
 const bintools = bintools_1.default.getInstance();
+const serializer = serialization_1.Serialization.getInstance();
+/**
+ * Takes a buffer representing the output and returns the proper [[BaseTx]] instance.
+ *
+ * @param txtype The id of the transaction type
+ *
+ * @returns An instance of an [[BaseTx]]-extended class.
+ */
+
+exports.SelectTxClass = (txtype, ...args) => {
+  if (txtype === constants_1.PlatformVMConstants.BASETX) {
+    return new basetx_1.BaseTx(...args);
+  } else if (txtype === constants_1.PlatformVMConstants.IMPORTTX) {
+    return new importtx_1.ImportTx(...args);
+  } else if (txtype === constants_1.PlatformVMConstants.EXPORTTX) {
+    return new exporttx_1.ExportTx(...args);
+  } else if (txtype === constants_1.PlatformVMConstants.ADDDELEGATORTX) {
+    return new validationtx_1.AddDelegatorTx(...args);
+  } else if (txtype === constants_1.PlatformVMConstants.ADDVALIDATORTX) {
+    return new validationtx_1.AddValidatorTx(...args);
+  } else if (txtype === constants_1.PlatformVMConstants.CREATESUBNETTX) {
+    return new createsubnettx_1.CreateSubnetTx(...args);
+  }
+  /* istanbul ignore next */
+
+
+  throw new Error(`Error - SelectTxClass: unknown txtype ${txtype}`);
+};
 
 class UnsignedTx extends tx_1.StandardUnsignedTx {
+  constructor() {
+    super(...arguments);
+    this._typeName = "UnsignedTx";
+    this._typeID = undefined;
+  } //serialize is inherited
+
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.transaction = exports.SelectTxClass(fields["transaction"]["_typeID"]);
+    this.transaction.deserialize(fields["transaction"], encoding);
+  }
+
+  getTransaction() {
+    return this.transaction;
+  }
+
   fromBuffer(bytes, offset = 0) {
     this.codecid = bintools.copyFrom(bytes, offset, offset + 2).readUInt16BE(0);
     offset += 2;
@@ -8616,6 +12653,25 @@ class UnsignedTx extends tx_1.StandardUnsignedTx {
 exports.UnsignedTx = UnsignedTx;
 
 class Tx extends tx_1.StandardTx {
+  constructor() {
+    super(...arguments);
+    this._typeName = "Tx";
+    this._typeID = undefined;
+  } //serialize is inherited
+
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.unsignedTx = new UnsignedTx();
+    this.unsignedTx.deserialize(fields["unsignedTx"], encoding);
+    this.credentials = [];
+
+    for (let i = 0; i < fields["credentials"].length; i++) {
+      const cred = credentials_1.SelectCredentialClass(fields["credentials"][i]["_typeID"]);
+      cred.deserialize(fields["credentials"][i], encoding);
+      this.credentials.push(cred);
+    }
+  }
   /**
    * Takes a {@link https://github.com/feross/buffer|Buffer} containing an [[Tx]], parses it, populates the class, and returns the length of the Tx in bytes.
    *
@@ -8624,6 +12680,8 @@ class Tx extends tx_1.StandardTx {
    *
    * @returns The length of the raw [[Tx]]
    */
+
+
   fromBuffer(bytes, offset = 0) {
     this.unsignedTx = new UnsignedTx();
     offset = this.unsignedTx.fromBuffer(bytes, offset);
@@ -8645,30 +12703,6 @@ class Tx extends tx_1.StandardTx {
 }
 
 exports.Tx = Tx;
-/**
- * Takes a buffer representing the output and returns the proper [[BaseTx]] instance.
- *
- * @param txtype The id of the transaction type
- *
- * @returns An instance of an [[BaseTx]]-extended class.
- */
-
-exports.SelectTxClass = (txtype, ...args) => {
-  if (txtype === constants_1.PlatformVMConstants.BASETX) {
-    const tx = new basetx_1.BaseTx(...args);
-    return tx;
-  } else if (txtype === constants_1.PlatformVMConstants.IMPORTTX) {
-    const tx = new importtx_1.ImportTx(...args);
-    return tx;
-  } else if (txtype === constants_1.PlatformVMConstants.EXPORTTX) {
-    const tx = new exporttx_1.ExportTx(...args);
-    return tx;
-  }
-  /* istanbul ignore next */
-
-
-  throw new Error(`Error - SelectTxClass: unknown txtype ${txtype}`);
-};
 
 /***/ }),
 
@@ -8728,17 +12762,33 @@ const assetamount_1 = __webpack_require__(/*! ../../common/assetamount */ "./nod
 const validationtx_1 = __webpack_require__(/*! ./validationtx */ "./node_modules/avalanche/dist/apis/platformvm/validationtx.js");
 
 const createsubnettx_1 = __webpack_require__(/*! ./createsubnettx */ "./node_modules/avalanche/dist/apis/platformvm/createsubnettx.js");
+
+const serialization_1 = __webpack_require__(/*! ../../utils/serialization */ "./node_modules/avalanche/dist/utils/serialization.js");
 /**
  * @ignore
  */
 
 
 const bintools = bintools_1.default.getInstance();
+const serializer = serialization_1.Serialization.getInstance();
 /**
  * Class for representing a single UTXO.
  */
 
 class UTXO extends utxos_1.StandardUTXO {
+  constructor() {
+    super(...arguments);
+    this._typeName = "UTXO";
+    this._typeID = undefined;
+  } //serialize is inherited
+
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.output = outputs_1.SelectOutputClass(fields["output"]["_typeID"]);
+    this.output.deserialize(fields["output"], encoding);
+  }
+
   fromBuffer(bytes, offset = 0) {
     this.codecid = bintools.copyFrom(bytes, offset, offset + 2);
     offset += 2;
@@ -8806,84 +12856,239 @@ exports.AssetAmountDestination = AssetAmountDestination;
 class UTXOSet extends utxos_1.StandardUTXOSet {
   constructor() {
     super(...arguments);
+    this._typeName = "UTXOSet";
+    this._typeID = undefined;
 
-    this.getMinimumSpendable = (aad, asOf = helperfunctions_1.UnixNow(), locktime = new bn_js_1.default(0), threshold = 1) => {
-      const utxoArray = this.getAllUTXOs();
-      const outids = {};
+    this.getConsumableUXTO = (asOf = helperfunctions_1.UnixNow(), stakeable = false) => {
+      return this.getAllUTXOs().filter(utxo => {
+        if (stakeable) {
+          // stakeable transactions can consume any UTXO.
+          return true;
+        }
 
-      for (let i = 0; i < utxoArray.length && !aad.canComplete(); i++) {
-        const u = utxoArray[i];
-        const assetKey = u.getAssetID().toString("hex");
+        const output = utxo.getOutput();
+
+        if (!(output instanceof outputs_1.StakeableLockOut)) {
+          // non-stakeable transactions can consume any UTXO that isn't locked.
+          return true;
+        }
+
+        const stakeableOutput = output;
+
+        if (stakeableOutput.getStakeableLocktime().lt(asOf)) {
+          // If the stakeable outputs locktime has ended, then this UTXO can still
+          // be consumed by a non-stakeable transaction.
+          return true;
+        } // This output is locked and can't be consumed by a non-stakeable
+        // transaction.
+
+
+        return false;
+      });
+    };
+
+    this.getMinimumSpendable = (aad, asOf = helperfunctions_1.UnixNow(), locktime = new bn_js_1.default(0), threshold = 1, stakeable = false) => {
+      let utxoArray = this.getConsumableUXTO(asOf, stakeable);
+      let tmpUTXOArray = [];
+
+      if (stakeable) {
+        // If this is a stakeable transaction then have StakeableLockOut come before SECPTransferOutput
+        // so that users first stake locked tokens before staking unlocked tokens
+        utxoArray.forEach(utxo => {
+          // StakeableLockOuts
+          if (utxo.getOutput().getTypeID() === 22) {
+            tmpUTXOArray.push(utxo);
+          }
+        }); // Sort the StakeableLockOuts by StakeableLocktime so that the greatest StakeableLocktime are spent first
+
+        tmpUTXOArray.sort((a, b) => {
+          let stakeableLockOut1 = a.getOutput();
+          let stakeableLockOut2 = b.getOutput();
+          return stakeableLockOut2.getStakeableLocktime().toNumber() - stakeableLockOut1.getStakeableLocktime().toNumber();
+        });
+        utxoArray.forEach(utxo => {
+          // SECPTransferOutputs
+          if (utxo.getOutput().getTypeID() === 7) {
+            tmpUTXOArray.push(utxo);
+          }
+        });
+        utxoArray = tmpUTXOArray;
+      } // outs is a map from assetID to a tuple of (lockedStakeable, unlocked)
+      // which are arrays of outputs.
+
+
+      const outs = {}; // We only need to iterate over UTXOs until we have spent sufficient funds
+      // to met the requested amounts.
+
+      utxoArray.forEach((utxo, index) => {
+        const assetID = utxo.getAssetID();
+        const assetKey = assetID.toString("hex");
         const fromAddresses = aad.getSenders();
+        const output = utxo.getOutput();
 
-        if (u.getOutput() instanceof outputs_1.AmountOutput && aad.assetExists(assetKey) && u.getOutput().meetsThreshold(fromAddresses, asOf)) {
-          const am = aad.getAssetAmount(assetKey);
+        if (!(output instanceof outputs_1.AmountOutput) || !aad.assetExists(assetKey) || !output.meetsThreshold(fromAddresses, asOf)) {
+          // We should only try to spend fungible assets.
+          // We should only spend {{ assetKey }}.
+          // We need to be able to spend the output.
+          return;
+        }
 
-          if (!am.isFinished()) {
-            const uout = u.getOutput();
-            outids[assetKey] = uout.getOutputID();
-            const amount = uout.getAmount();
-            am.spendAmount(amount);
-            const txid = u.getTxID();
-            const outputidx = u.getOutputIdx();
-            const input = new inputs_1.SECPTransferInput(amount);
-            const xferin = new inputs_1.TransferableInput(txid, outputidx, u.getAssetID(), input);
-            const spenders = uout.getSpenders(fromAddresses, asOf);
+        const assetAmount = aad.getAssetAmount(assetKey);
 
-            for (let j = 0; j < spenders.length; j++) {
-              const idx = uout.getAddressIdx(spenders[j]);
+        if (assetAmount.isFinished()) {
+          // We've already spent the needed UTXOs for this assetID.
+          return;
+        }
 
-              if (idx === -1) {
-                /* istanbul ignore next */
-                throw new Error('Error - UTXOSet.buildBaseTx: no such ' + `address in output: ${spenders[j]}`);
-              }
+        if (!(assetKey in outs)) {
+          // If this is the first time spending this assetID, we need to
+          // initialize the outs object correctly.
+          outs[assetKey] = {
+            lockedStakeable: [],
+            unlocked: []
+          };
+        }
 
-              xferin.getInput().addSignatureIdx(idx, spenders[j]);
-            }
+        const amountOutput = output; // amount is the amount of funds available from this UTXO.
 
-            aad.addInput(xferin);
-          } else if (aad.assetExists(assetKey) && !(u.getOutput() instanceof outputs_1.AmountOutput)) {
-            /**
-             * Leaving the below lines, not simply for posterity, but for clarification.
-             * AssetIDs may have mixed OutputTypes.
-             * Some of those OutputTypes may implement AmountOutput.
-             * Others may not.
-             * Simply continue in this condition.
-             */
+        const amount = amountOutput.getAmount(); // Set up the SECP input with the same amount as the output.
 
-            /*return new Error('Error - UTXOSet.getMinimumSpendable: outputID does not '
-              + `implement AmountOutput: ${u.getOutput().getOutputID}`);*/
-            continue;
+        let input = new inputs_1.SECPTransferInput(amount);
+        let locked = false;
+
+        if (amountOutput instanceof outputs_1.StakeableLockOut) {
+          const stakeableOutput = amountOutput;
+          const stakeableLocktime = stakeableOutput.getStakeableLocktime();
+
+          if (stakeableLocktime.gt(asOf)) {
+            // Add a new input and mark it as being locked.
+            input = new inputs_1.StakeableLockIn(amount, stakeableLocktime, new inputs_1.ParseableInput(input)); // Mark this UTXO as having been re-locked.
+
+            locked = true;
           }
         }
-      }
+
+        assetAmount.spendAmount(amount, locked);
+
+        if (locked) {
+          // Track the UTXO as locked.
+          outs[assetKey].lockedStakeable.push(amountOutput);
+        } else {
+          // Track the UTXO as unlocked.
+          outs[assetKey].unlocked.push(amountOutput);
+        } // Get the indices of the outputs that should be used to authorize the
+        // spending of this input.
+        // TODO: getSpenders should return an array of indices rather than an
+        // array of addresses.
+
+
+        const spenders = amountOutput.getSpenders(fromAddresses, asOf);
+        spenders.forEach(spender => {
+          const idx = amountOutput.getAddressIdx(spender);
+
+          if (idx === -1) {
+            // This should never happen, which is why the error is thrown rather
+            // than being returned. If this were to ever happen this would be an
+            // error in the internal logic rather having called this function with
+            // invalid arguments.
+
+            /* istanbul ignore next */
+            throw new Error('Error - UTXOSet.getMinimumSpendable: no such ' + `address in output: ${spender}`);
+          }
+
+          input.addSignatureIdx(idx, spender);
+        });
+        const txID = utxo.getTxID();
+        const outputIdx = utxo.getOutputIdx();
+        const transferInput = new inputs_1.TransferableInput(txID, outputIdx, assetID, input);
+        aad.addInput(transferInput);
+      });
 
       if (!aad.canComplete()) {
+        // After running through all the UTXOs, we still weren't able to get all
+        // the necessary funds, so this transaction can't be made.
         return new Error('Error - UTXOSet.getMinimumSpendable: insufficient ' + 'funds to create the transaction');
-      }
+      } // TODO: We should separate the above functionality into a single function
+      // that just selects the UTXOs to consume.
 
-      const amounts = aad.getAmounts();
-      const zero = new bn_js_1.default(0);
 
-      for (let i = 0; i < amounts.length; i++) {
-        const assetKey = amounts[i].getAssetIDString();
-        const amount = amounts[i].getAmount();
+      const zero = new bn_js_1.default(0); // assetAmounts is an array of asset descriptions and how much is left to
+      // spend for them.
 
-        if (amount.gt(zero)) {
-          const spendout = outputs_1.SelectOutputClass(outids[assetKey], amount, aad.getDestinations(), locktime, threshold);
-          const xferout = new outputs_1.TransferableOutput(amounts[i].getAssetID(), spendout);
-          aad.addOutput(xferout);
+      const assetAmounts = aad.getAmounts();
+      assetAmounts.forEach(assetAmount => {
+        // change is the amount that should be returned back to the source of the
+        // funds.
+        const change = assetAmount.getChange(); // isStakeableLockChange is if the change is locked or not.
+
+        const isStakeableLockChange = assetAmount.getStakeableLockChange(); // lockedChange is the amount of locked change that should be returned to
+        // the sender
+
+        const lockedChange = isStakeableLockChange ? change : zero.clone();
+        const assetID = assetAmount.getAssetID();
+        const assetKey = assetAmount.getAssetIDString();
+        const lockedOutputs = outs[assetKey].lockedStakeable;
+        lockedOutputs.forEach((lockedOutput, i) => {
+          const stakeableLocktime = lockedOutput.getStakeableLocktime();
+          const parseableOutput = lockedOutput.getTransferableOutput(); // We know that parseableOutput contains an AmountOutput because the
+          // first loop filters for fungible assets.
+
+          const output = parseableOutput.getOutput();
+          let outputAmountRemaining = output.getAmount(); // The only output that could generate change is the last output.
+          // Otherwise, any further UTXOs wouldn't have needed to be spent.
+
+          if (i == lockedOutputs.length - 1 && lockedChange.gt(zero)) {
+            // update outputAmountRemaining to no longer hold the change that we
+            // are returning.
+            outputAmountRemaining = outputAmountRemaining.sub(lockedChange); // Create the inner output.
+
+            const newChangeOutput = outputs_1.SelectOutputClass(output.getOutputID(), lockedChange, output.getAddresses(), output.getLocktime(), output.getThreshold()); // Wrap the inner output in the StakeableLockOut wrapper.
+
+            let newLockedChangeOutput = outputs_1.SelectOutputClass(lockedOutput.getOutputID(), lockedChange, output.getAddresses(), output.getLocktime(), output.getThreshold(), stakeableLocktime, new outputs_1.ParseableOutput(newChangeOutput));
+            const transferOutput = new outputs_1.TransferableOutput(assetID, newLockedChangeOutput);
+            aad.addChange(transferOutput);
+          } // We know that outputAmountRemaining > 0. Otherwise, we would never
+          // have consumed this UTXO, as it would be only change.
+          // Create the inner output.
+
+
+          const newOutput = outputs_1.SelectOutputClass(output.getOutputID(), outputAmountRemaining, output.getAddresses(), output.getLocktime(), output.getThreshold()); // Wrap the inner output in the StakeableLockOut wrapper.
+
+          const newLockedOutput = outputs_1.SelectOutputClass(lockedOutput.getOutputID(), outputAmountRemaining, output.getAddresses(), output.getLocktime(), output.getThreshold(), stakeableLocktime, new outputs_1.ParseableOutput(newOutput));
+          const transferOutput = new outputs_1.TransferableOutput(assetID, newLockedOutput);
+          aad.addOutput(transferOutput);
+        }); // unlockedChange is the amount of unlocked change that should be returned
+        // to the sender
+
+        const unlockedChange = isStakeableLockChange ? zero.clone() : change;
+
+        if (unlockedChange.gt(zero)) {
+          const newChangeOutput = new outputs_1.SECPTransferOutput(unlockedChange, aad.getChangeAddresses(), zero.clone(), // make sure that we don't lock the change output.
+          1);
+          const transferOutput = new outputs_1.TransferableOutput(assetID, newChangeOutput);
+          aad.addChange(transferOutput);
+        } // totalAmountSpent is the total amount of tokens consumed.
+
+
+        const totalAmountSpent = assetAmount.getSpent(); // stakeableLockedAmount is the total amount of locked tokens consumed.
+
+        const stakeableLockedAmount = assetAmount.getStakeableLockSpent(); // totalUnlockedSpent is the total amount of unlocked tokens consumed.
+
+        const totalUnlockedSpent = totalAmountSpent.sub(stakeableLockedAmount); // amountBurnt is the amount of unlocked tokens that must be burn.
+
+        const amountBurnt = assetAmount.getBurn(); // totalUnlockedAvailable is the total amount of unlocked tokens available
+        // to be produced.
+
+        const totalUnlockedAvailable = totalUnlockedSpent.sub(amountBurnt); // unlockedAmount is the amount of unlocked tokens that should be sent.
+
+        const unlockedAmount = totalUnlockedAvailable.sub(unlockedChange);
+
+        if (unlockedAmount.gt(zero)) {
+          const newOutput = new outputs_1.SECPTransferOutput(unlockedAmount, aad.getDestinations(), locktime, threshold);
+          const transferOutput = new outputs_1.TransferableOutput(assetID, newOutput);
+          aad.addOutput(transferOutput);
         }
-
-        const change = amounts[i].getChange();
-
-        if (change.gt(zero)) {
-          const changeout = outputs_1.SelectOutputClass(outids[assetKey], change, aad.getChangeAddresses());
-          const chgxferout = new outputs_1.TransferableOutput(amounts[i].getAssetID(), changeout);
-          aad.addChange(chgxferout);
-        }
-      }
-
+      });
       return undefined;
     };
     /**
@@ -8943,13 +13148,13 @@ class UTXOSet extends utxos_1.StandardUTXOSet {
 
       let ins = [];
       let outs = [];
-      const success = this.getMinimumSpendable(aad, asOf, locktime, threshold);
+      const minSpendableErr = this.getMinimumSpendable(aad, asOf, locktime, threshold);
 
-      if (typeof success === "undefined") {
+      if (typeof minSpendableErr === "undefined") {
         ins = aad.getInputs();
         outs = aad.getAllOutputs();
       } else {
-        throw success;
+        throw minSpendableErr;
       }
 
       const baseTx = new basetx_1.BaseTx(networkid, blockchainid, outs, ins, memo);
@@ -9041,13 +13246,13 @@ class UTXOSet extends utxos_1.StandardUTXOSet {
       if (feeRemaining.gt(zero) && this._feeCheck(feeRemaining, feeAssetID)) {
         const aad = new AssetAmountDestination(toAddresses, fromAddresses, changeAddresses);
         aad.addAssetAmount(feeAssetID, zero, feeRemaining);
-        const success = this.getMinimumSpendable(aad, asOf, locktime, threshold);
+        const minSpendableErr = this.getMinimumSpendable(aad, asOf, locktime, threshold);
 
-        if (typeof success === "undefined") {
+        if (typeof minSpendableErr === "undefined") {
           ins = aad.getInputs();
           outs = aad.getAllOutputs();
         } else {
-          throw success;
+          throw minSpendableErr;
         }
       }
 
@@ -9077,7 +13282,8 @@ class UTXOSet extends utxos_1.StandardUTXOSet {
       */
 
 
-    this.buildExportTx = (networkid, blockchainid, amount, avaxAssetID, toAddresses, fromAddresses, changeAddresses = undefined, destinationChain = undefined, fee = undefined, feeAssetID = undefined, memo = undefined, asOf = helperfunctions_1.UnixNow(), locktime = new bn_js_1.default(0), threshold = 1) => {
+    this.buildExportTx = (networkid, blockchainid, amount, avaxAssetID, // TODO: rename this to amountAssetID
+    toAddresses, fromAddresses, changeAddresses = undefined, destinationChain = undefined, fee = undefined, feeAssetID = undefined, memo = undefined, asOf = helperfunctions_1.UnixNow(), locktime = new bn_js_1.default(0), threshold = 1) => {
       let ins = [];
       let outs = [];
       let exportouts = [];
@@ -9115,14 +13321,14 @@ class UTXOSet extends utxos_1.StandardUTXOSet {
         }
       }
 
-      const success = this.getMinimumSpendable(aad, asOf, locktime, threshold);
+      const minSpendableErr = this.getMinimumSpendable(aad, asOf, locktime, threshold);
 
-      if (typeof success === "undefined") {
+      if (typeof minSpendableErr === "undefined") {
         ins = aad.getInputs();
         outs = aad.getChangeOutputs();
         exportouts = aad.getOutputs();
       } else {
-        throw success;
+        throw minSpendableErr;
       }
 
       const exportTx = new exporttx_1.ExportTx(networkid, blockchainid, outs, ins, memo, destinationChain, exportouts);
@@ -9173,7 +13379,8 @@ class UTXOSet extends utxos_1.StandardUTXOSet {
       if (startTime.lt(now) || endTime.lte(startTime)) {
         throw new Error("UTXOSet.buildAddSubnetValidatorTx -- startTime must be in the future and endTime must come after startTime");
       }
-             // Not implemented: Fees can be paid from importIns
+     
+      // Not implemented: Fees can be paid from importIns
       if(this._feeCheck(fee, feeAssetID)) {
         const aad:AssetAmountDestination = new AssetAmountDestination(fromAddresses, fromAddresses, changeAddresses);
         aad.addAssetAmount(feeAssetID, zero, fee);
@@ -9185,7 +13392,8 @@ class UTXOSet extends utxos_1.StandardUTXOSet {
           throw success;
         }
       }
-             const UTx:AddSubnetValidatorTx = new AddSubnetValidatorTx(networkid, blockchainid, outs, ins, memo, nodeID, startTime, endTime, weight);
+     
+      const UTx:AddSubnetValidatorTx = new AddSubnetValidatorTx(networkid, blockchainid, outs, ins, memo, nodeID, startTime, endTime, weight);
       return new UnsignedTx(UTx);
     }
     */
@@ -9196,7 +13404,8 @@ class UTXOSet extends utxos_1.StandardUTXOSet {
     * @param networkid Networkid, [[DefaultNetworkID]]
     * @param blockchainid Blockchainid, default undefined
     * @param avaxAssetID {@link https://github.com/feross/buffer|Buffer} of the asset ID for AVAX
-    * @param fromAddresses An array of addresses as {@link https://github.com/feross/buffer|Buffer} who pays the fees and the stake in AVAX
+    * @param toAddresses An array of addresses as {@link https://github.com/feross/buffer|Buffer} recieves the stake at the end of the staking period
+    * @param fromAddresses An array of addresses as {@link https://github.com/feross/buffer|Buffer} who pays the fees and the stake
     * @param changeAddresses An array of addresses as {@link https://github.com/feross/buffer|Buffer} who gets the change leftover from the staking payment
     * @param nodeID The node ID of the validator being added.
     * @param startTime The Unix time when the validator starts validating the Primary Network.
@@ -9214,7 +13423,7 @@ class UTXOSet extends utxos_1.StandardUTXOSet {
     */
 
 
-    this.buildAddDelegatorTx = (networkid = constants_2.DefaultNetworkID, blockchainid, avaxAssetID, fromAddresses, changeAddresses, nodeID, startTime, endTime, stakeAmount, rewardLocktime, rewardThreshold, rewardAddresses, fee = undefined, feeAssetID = undefined, memo = undefined, asOf = helperfunctions_1.UnixNow()) => {
+    this.buildAddDelegatorTx = (networkid = constants_2.DefaultNetworkID, blockchainid, avaxAssetID, toAddresses, fromAddresses, changeAddresses, nodeID, startTime, endTime, stakeAmount, rewardLocktime, rewardThreshold, rewardAddresses, fee = undefined, feeAssetID = undefined, memo = undefined, asOf = helperfunctions_1.UnixNow()) => {
       let ins = [];
       let outs = [];
       let stakeOuts = [];
@@ -9225,7 +13434,7 @@ class UTXOSet extends utxos_1.StandardUTXOSet {
         throw new Error("UTXOSet.buildAddDelegatorTx -- startTime must be in the future and endTime must come after startTime");
       }
 
-      const aad = new AssetAmountDestination(fromAddresses, fromAddresses, changeAddresses);
+      const aad = new AssetAmountDestination(toAddresses, fromAddresses, changeAddresses);
 
       if (avaxAssetID.toString("hex") === feeAssetID.toString("hex")) {
         aad.addAssetAmount(avaxAssetID, stakeAmount, fee);
@@ -9237,14 +13446,14 @@ class UTXOSet extends utxos_1.StandardUTXOSet {
         }
       }
 
-      const success = this.getMinimumSpendable(aad, asOf);
+      const minSpendableErr = this.getMinimumSpendable(aad, asOf, undefined, undefined, true);
 
-      if (typeof success === "undefined") {
+      if (typeof minSpendableErr === "undefined") {
         ins = aad.getInputs();
         outs = aad.getChangeOutputs();
         stakeOuts = aad.getOutputs();
       } else {
-        throw success;
+        throw minSpendableErr;
       }
 
       const rewardOutputOwners = new outputs_1.SECPOwnerOutput(rewardAddresses, rewardLocktime, rewardThreshold);
@@ -9257,7 +13466,8 @@ class UTXOSet extends utxos_1.StandardUTXOSet {
       * @param networkid Networkid, [[DefaultNetworkID]]
       * @param blockchainid Blockchainid, default undefined
       * @param avaxAssetID {@link https://github.com/feross/buffer|Buffer} of the asset ID for AVAX
-      * @param fromAddresses An array of addresses as {@link https://github.com/feross/buffer|Buffer} who pays the fees and the stake in AVAX
+      * @param toAddresses An array of addresses as {@link https://github.com/feross/buffer|Buffer} recieves the stake at the end of the staking period
+      * @param fromAddresses An array of addresses as {@link https://github.com/feross/buffer|Buffer} who pays the fees and the stake
       * @param changeAddresses An array of addresses as {@link https://github.com/feross/buffer|Buffer} who gets the change leftover from the staking payment
       * @param nodeID The node ID of the validator being added.
       * @param startTime The Unix time when the validator starts validating the Primary Network.
@@ -9277,7 +13487,7 @@ class UTXOSet extends utxos_1.StandardUTXOSet {
       */
 
 
-    this.buildAddValidatorTx = (networkid = constants_2.DefaultNetworkID, blockchainid, avaxAssetID, fromAddresses, changeAddresses, nodeID, startTime, endTime, stakeAmount, rewardLocktime, rewardThreshold, rewardAddresses, delegationFee, fee = undefined, feeAssetID = undefined, memo = undefined, asOf = helperfunctions_1.UnixNow()) => {
+    this.buildAddValidatorTx = (networkid = constants_2.DefaultNetworkID, blockchainid, avaxAssetID, toAddresses, fromAddresses, changeAddresses, nodeID, startTime, endTime, stakeAmount, rewardLocktime, rewardThreshold, rewardAddresses, delegationFee, fee = undefined, feeAssetID = undefined, memo = undefined, asOf = helperfunctions_1.UnixNow()) => {
       let ins = [];
       let outs = [];
       let stakeOuts = [];
@@ -9292,7 +13502,7 @@ class UTXOSet extends utxos_1.StandardUTXOSet {
         throw new Error("UTXOSet.buildAddValidatorTx -- startTime must be in the range of 0 to 100, inclusively");
       }
 
-      const aad = new AssetAmountDestination(fromAddresses, fromAddresses, changeAddresses);
+      const aad = new AssetAmountDestination(toAddresses, fromAddresses, changeAddresses);
 
       if (avaxAssetID.toString("hex") === feeAssetID.toString("hex")) {
         aad.addAssetAmount(avaxAssetID, stakeAmount, fee);
@@ -9304,14 +13514,14 @@ class UTXOSet extends utxos_1.StandardUTXOSet {
         }
       }
 
-      const success = this.getMinimumSpendable(aad, asOf);
+      const minSpendableErr = this.getMinimumSpendable(aad, asOf, undefined, undefined, true);
 
-      if (typeof success === "undefined") {
+      if (typeof minSpendableErr === "undefined") {
         ins = aad.getInputs();
         outs = aad.getChangeOutputs();
         stakeOuts = aad.getOutputs();
       } else {
-        throw success;
+        throw minSpendableErr;
       }
 
       const rewardOutputOwners = new outputs_1.SECPOwnerOutput(rewardAddresses, rewardLocktime, rewardThreshold);
@@ -9344,13 +13554,13 @@ class UTXOSet extends utxos_1.StandardUTXOSet {
       if (this._feeCheck(fee, feeAssetID)) {
         const aad = new AssetAmountDestination(fromAddresses, fromAddresses, changeAddresses);
         aad.addAssetAmount(feeAssetID, zero, fee);
-        const success = this.getMinimumSpendable(aad, asOf);
+        const minSpendableErr = this.getMinimumSpendable(aad, asOf, undefined, undefined);
 
-        if (typeof success === "undefined") {
+        if (typeof minSpendableErr === "undefined") {
           ins = aad.getInputs();
           outs = aad.getAllOutputs();
         } else {
-          throw success;
+          throw minSpendableErr;
         }
       }
 
@@ -9358,6 +13568,35 @@ class UTXOSet extends utxos_1.StandardUTXOSet {
       const UTx = new createsubnettx_1.CreateSubnetTx(networkid, blockchainid, outs, ins, memo, new outputs_1.SECPOwnerOutput(subnetOwnerAddresses, locktime, subnetOwnerThreshold));
       return new tx_1.UnsignedTx(UTx);
     };
+  } //serialize is inherited
+
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    let utxos = {};
+
+    for (let utxoid in fields["utxos"]) {
+      let utxoidCleaned = serializer.decoder(utxoid, encoding, "base58", "base58");
+      utxos[utxoidCleaned] = new UTXO();
+      utxos[utxoidCleaned].deserialize(fields["utxos"][utxoid], encoding);
+    }
+
+    let addressUTXOs = {};
+
+    for (let address in fields["addressUTXOs"]) {
+      let addressCleaned = serializer.decoder(address, encoding, "cb58", "hex");
+      let utxobalance = {};
+
+      for (let utxoid in fields["addressUTXOs"][address]) {
+        let utxoidCleaned = serializer.decoder(utxoid, encoding, "base58", "base58");
+        utxobalance[utxoidCleaned] = serializer.decoder(fields["addressUTXOs"][address][utxoid], encoding, "decimalString", "BN");
+      }
+
+      addressUTXOs[addressCleaned] = utxobalance;
+    }
+
+    this.utxos = utxos;
+    this.addressUTXOs = addressUTXOs;
   }
 
   parseUTXO(utxo) {
@@ -9438,12 +13677,15 @@ const constants_2 = __webpack_require__(/*! ../../utils/constants */ "./node_mod
 const helperfunctions_1 = __webpack_require__(/*! ../../utils/helperfunctions */ "./node_modules/avalanche/dist/utils/helperfunctions.js");
 
 const outputs_2 = __webpack_require__(/*! ./outputs */ "./node_modules/avalanche/dist/apis/platformvm/outputs.js");
+
+const serialization_1 = __webpack_require__(/*! ../../utils/serialization */ "./node_modules/avalanche/dist/utils/serialization.js");
 /**
  * @ignore
  */
 
 
 const bintools = bintools_1.default.getInstance();
+const serializer = serialization_1.Serialization.getInstance();
 /**
  * Abstract class representing an transactions with validation information.
  */
@@ -9451,12 +13693,30 @@ const bintools = bintools_1.default.getInstance();
 class ValidatorTx extends basetx_1.BaseTx {
   constructor(networkid, blockchainid, outs, ins, memo, nodeID, startTime, endTime) {
     super(networkid, blockchainid, outs, ins, memo);
+    this._typeName = "ValidatorTx";
+    this._typeID = undefined;
     this.nodeID = buffer_1.Buffer.alloc(20);
     this.startTime = buffer_1.Buffer.alloc(8);
     this.endTime = buffer_1.Buffer.alloc(8);
     this.nodeID = nodeID;
     this.startTime = bintools.fromBNToBuffer(startTime, 8);
     this.endTime = bintools.fromBNToBuffer(endTime, 8);
+  }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "nodeID": serializer.encoder(this.nodeID, encoding, "Buffer", "nodeID"),
+      "startTime": serializer.encoder(this.startTime, encoding, "Buffer", "decimalString"),
+      "endTime": serializer.encoder(this.endTime, encoding, "Buffer", "decimalString")
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.nodeID = serializer.decoder(fields["nodeID"], encoding, "nodeID", "Buffer", 20);
+    this.startTime = serializer.decoder(fields["startTime"], encoding, "decimalString", "Buffer", 8);
+    this.endTime = serializer.decoder(fields["endTime"], encoding, "decimalString", "Buffer", 8);
   }
   /**
    * Returns a {@link https://github.com/feross/buffer|Buffer} for the stake amount.
@@ -9532,11 +13792,25 @@ class WeightedValidatorTx extends ValidatorTx {
    */
   constructor(networkid = constants_2.DefaultNetworkID, blockchainid = buffer_1.Buffer.alloc(32, 16), outs = undefined, ins = undefined, memo = undefined, nodeID = undefined, startTime = undefined, endTime = undefined, weight = undefined) {
     super(networkid, blockchainid, outs, ins, memo, nodeID, startTime, endTime);
+    this._typeName = "WeightedValidatorTx";
+    this._typeID = undefined;
     this.weight = buffer_1.Buffer.alloc(8);
 
     if (typeof weight !== undefined) {
       this.weight = bintools.fromBNToBuffer(weight, 8);
     }
+  }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "weight": serializer.encoder(this.weight, encoding, "Buffer", "decimalString")
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.weight = serializer.decoder(fields["weight"], encoding, "decimalString", "Buffer", 8);
   }
   /**
    * Returns a {@link https://github.com/indutny/bn.js/|BN} for the stake amount.
@@ -9709,6 +13983,8 @@ class AddDelegatorTx extends WeightedValidatorTx {
    */
   constructor(networkid = constants_2.DefaultNetworkID, blockchainid = buffer_1.Buffer.alloc(32, 16), outs = undefined, ins = undefined, memo = undefined, nodeID = undefined, startTime = undefined, endTime = undefined, stakeAmount = undefined, stakeOuts = undefined, rewardOwners = undefined) {
     super(networkid, blockchainid, outs, ins, memo, nodeID, startTime, endTime, stakeAmount);
+    this._typeName = "AddDelegatorTx";
+    this._typeID = constants_1.PlatformVMConstants.ADDDELEGATORTX;
     this.stakeOuts = [];
     this.rewardOwners = undefined;
     /**
@@ -9716,7 +13992,7 @@ class AddDelegatorTx extends WeightedValidatorTx {
        */
 
     this.getTxType = () => {
-      return constants_1.PlatformVMConstants.ADDDELEGATORTX;
+      return this._typeID;
     };
 
     if (typeof stakeOuts !== undefined) {
@@ -9724,6 +14000,25 @@ class AddDelegatorTx extends WeightedValidatorTx {
     }
 
     this.rewardOwners = rewardOwners;
+  }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "stakeOuts": this.stakeOuts.map(s => s.serialize(encoding)),
+      "rewardOwners": this.rewardOwners.serialize(encoding)
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.stakeOuts = fields["stakeOuts"].map(s => {
+      let xferout = new outputs_1.TransferableOutput();
+      xferout.deserialize(s, encoding);
+      return xferout;
+    });
+    this.rewardOwners = new outputs_2.ParseableOutput();
+    this.rewardOwners.deserialize(fields["rewardOwners"], encoding);
   }
   /**
    * Returns a {@link https://github.com/indutny/bn.js/|BN} for the stake amount.
@@ -9781,17 +14076,16 @@ class AddDelegatorTx extends WeightedValidatorTx {
     const numstakeouts = bintools.copyFrom(bytes, offset, offset + 4);
     offset += 4;
     const outcount = numstakeouts.readUInt32BE(0);
-    this.outs = [];
+    this.stakeOuts = [];
 
     for (let i = 0; i < outcount; i++) {
       const xferout = new outputs_1.TransferableOutput();
       offset = xferout.fromBuffer(bytes, offset);
-      this.outs.push(xferout);
+      this.stakeOuts.push(xferout);
     }
 
     this.rewardOwners = new outputs_2.ParseableOutput();
     offset = this.rewardOwners.fromBuffer(bytes, offset);
-    offset += constants_1.PlatformVMConstants.ADDRESSLENGTH;
     return offset;
   }
   /**
@@ -9856,13 +14150,15 @@ class AddValidatorTx extends AddDelegatorTx {
    */
   constructor(networkid = constants_2.DefaultNetworkID, blockchainid = buffer_1.Buffer.alloc(32, 16), outs = undefined, ins = undefined, memo = undefined, nodeID = undefined, startTime = undefined, endTime = undefined, stakeAmount = undefined, stakeOuts = undefined, rewardOwners = undefined, delegationFee = undefined) {
     super(networkid, blockchainid, outs, ins, memo, nodeID, startTime, endTime, stakeAmount, stakeOuts, rewardOwners);
+    this._typeName = "AddValidatorTx";
+    this._typeID = constants_1.PlatformVMConstants.ADDVALIDATORTX;
     this.delegationFee = 0;
     /**
-       * Returns the id of the [[AddDelegatorTx]]
+       * Returns the id of the [[AddValidatorTx]]
        */
 
     this.getTxType = () => {
-      return constants_1.PlatformVMConstants.ADDVALIDATORTX;
+      return this._typeID;
     };
 
     if (typeof delegationFee === "number") {
@@ -9872,6 +14168,19 @@ class AddValidatorTx extends AddDelegatorTx {
         throw new Error("AddValidatorTx.constructor -- delegationFee must be in the range of 0 and 100, inclusively.");
       }
     }
+  }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "delegationFee": serializer.encoder(this.getDelegationFeeBuffer(), encoding, "Buffer", "decimalString", 4)
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    let dbuff = serializer.decoder(fields["delegationFee"], encoding, "decimalString", "Buffer", 4);
+    this.delegationFee = dbuff.readUInt32BE(0) / AddValidatorTx.delegatorMultiplier;
   }
   /**
    * Returns the delegation fee (represents a percentage from 0 to 100);
@@ -10295,13 +14604,13 @@ class APIBase {
   /**
      *
      * @param core Reference to the Avalanche instance using this baseurl
-     * @param baseurl Path to the baseurl - ex: "/ext/bc/avm"
+     * @param baseurl Path to the baseurl - ex: "/ext/bc/X"
      */
   constructor(core, baseurl) {
     /**
        * Sets the path of the APIs baseurl.
        *
-       * @param baseurl Path of the APIs baseurl - ex: "/ext/bc/avm"
+       * @param baseurl Path of the APIs baseurl - ex: "/ext/bc/X"
        */
     this.setBaseURL = baseurl => {
       if (this.db && this.baseurl !== baseurl) {
@@ -10373,11 +14682,24 @@ const bn_js_1 = __importDefault(__webpack_require__(/*! bn.js */ "./node_modules
 
 class AssetAmount {
   constructor(assetID, amount, burn) {
-    this.assetID = buffer_1.Buffer.alloc(32);
-    this.amount = new bn_js_1.default(0);
-    this.burn = new bn_js_1.default(0);
-    this.spent = new bn_js_1.default(0);
-    this.change = new bn_js_1.default(0);
+    // assetID that is amount is managing.
+    this.assetID = buffer_1.Buffer.alloc(32); // amount of this asset that should be sent.
+
+    this.amount = new bn_js_1.default(0); // burn is the amount of this asset that should be burned.
+
+    this.burn = new bn_js_1.default(0); // spent is the total amount of this asset that has been consumed.
+
+    this.spent = new bn_js_1.default(0); // stakeableLockSpent is the amount of this asset that has been consumed that
+    // was locked.
+
+    this.stakeableLockSpent = new bn_js_1.default(0); // change is the excess amount of this asset that was consumed over the amount
+    // requested to be consumed(amount + burn).
+
+    this.change = new bn_js_1.default(0); // stakeableLockChange is a flag to mark if the input that generated the
+    // change was locked.
+
+    this.stakeableLockChange = false; // finished is a convenience flag to track "spent >= amount + burn"
+
     this.finished = false;
 
     this.getAssetID = () => {
@@ -10404,19 +14726,42 @@ class AssetAmount {
       return this.change;
     };
 
-    this.isFinished = () => {
-      return this.finished;
+    this.getStakeableLockSpent = () => {
+      return this.stakeableLockSpent;
     };
 
-    this.spendAmount = amt => {
-      if (!this.finished) {
-        let total = this.amount.add(this.burn);
-        this.spent = this.spent.add(amt);
+    this.getStakeableLockChange = () => {
+      return this.stakeableLockChange;
+    };
 
-        if (this.spent.gte(total)) {
-          this.change = this.spent.sub(total);
-          this.finished = true;
+    this.isFinished = () => {
+      return this.finished;
+    }; // spendAmount should only be called if this asset is still awaiting more
+    // funds to consume.
+
+
+    this.spendAmount = (amt, stakeableLocked = false) => {
+      if (this.finished) {
+        /* istanbul ignore next */
+        throw new Error('Error - AssetAmount.spendAmount: attempted to spend ' + 'excess funds');
+      }
+
+      this.spent = this.spent.add(amt);
+
+      if (stakeableLocked) {
+        this.stakeableLockSpent = this.stakeableLockSpent.add(amt);
+      }
+
+      const total = this.amount.add(this.burn);
+
+      if (this.spent.gte(total)) {
+        this.change = this.spent.sub(total);
+
+        if (stakeableLocked) {
+          this.stakeableLockChange = true;
         }
+
+        this.finished = true;
       }
 
       return this.finished;
@@ -10426,6 +14771,8 @@ class AssetAmount {
     this.amount = typeof amount === "undefined" ? new bn_js_1.default(0) : amount;
     this.burn = typeof burn === "undefined" ? new bn_js_1.default(0) : burn;
     this.spent = new bn_js_1.default(0);
+    this.stakeableLockSpent = new bn_js_1.default(0);
+    this.stakeableLockChange = false;
   }
 
 }
@@ -10441,7 +14788,8 @@ class StandardAssetAmountDestination {
     this.amountkey = {};
     this.inputs = [];
     this.outputs = [];
-    this.change = [];
+    this.change = []; // TODO: should this function allow for repeated calls with the same
+    //       assetID?
 
     this.addAssetAmount = (assetID, amount, burn) => {
       let aa = new AssetAmount(assetID, amount, burn);
@@ -10552,12 +14900,15 @@ const nbytes_1 = __webpack_require__(/*! ./nbytes */ "./node_modules/avalanche/d
 const buffer_1 = __webpack_require__(/*! buffer/ */ "./node_modules/node-libs-browser/node_modules/buffer/index.js");
 
 const bintools_1 = __importDefault(__webpack_require__(/*! ../utils/bintools */ "./node_modules/avalanche/dist/utils/bintools.js"));
+
+const serialization_1 = __webpack_require__(/*! ../utils/serialization */ "./node_modules/avalanche/dist/utils/serialization.js");
 /**
  * @ignore
  */
 
 
 const bintools = bintools_1.default.getInstance();
+const serializer = serialization_1.Serialization.getInstance();
 /**
  * Type representing a [[Signature]] index used in [[Input]]
  */
@@ -10568,6 +14919,11 @@ class SigIdx extends nbytes_1.NBytes {
    */
   constructor() {
     super();
+    this._typeName = "SigIdx";
+    this._typeID = undefined;
+    this.source = buffer_1.Buffer.alloc(20);
+    this.bytes = buffer_1.Buffer.alloc(4);
+    this.bsize = 4;
     /**
      * Sets the source address for the signature
      */
@@ -10581,9 +14937,18 @@ class SigIdx extends nbytes_1.NBytes {
 
 
     this.getSource = () => this.source;
+  }
 
-    this.bytes = buffer_1.Buffer.alloc(4);
-    this.bsize = 4;
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "source": serializer.encoder(this.source, encoding, "Buffer", "hex")
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.source = serializer.decoder(fields["source"], encoding, "hex", "Buffer");
   }
 
   clone() {
@@ -10604,6 +14969,18 @@ exports.SigIdx = SigIdx;
  */
 
 class Signature extends nbytes_1.NBytes {
+  /**
+   * Signature for a [[Tx]]
+   */
+  constructor() {
+    super();
+    this._typeName = "Signature";
+    this._typeID = undefined; //serialize and deserialize both are inherited
+
+    this.bytes = buffer_1.Buffer.alloc(65);
+    this.bsize = 65;
+  }
+
   clone() {
     let newbase = new Signature();
     newbase.fromBuffer(this.toBuffer());
@@ -10613,23 +14990,16 @@ class Signature extends nbytes_1.NBytes {
   create(...args) {
     return new Signature();
   }
-  /**
-   * Signature for a [[Tx]]
-   */
-
-
-  constructor() {
-    super();
-    this.bytes = buffer_1.Buffer.alloc(65);
-    this.bsize = 65;
-  }
 
 }
 
 exports.Signature = Signature;
 
-class Credential {
+class Credential extends serialization_1.Serializable {
   constructor(sigarray = undefined) {
+    super();
+    this._typeName = "Credential";
+    this._typeID = undefined;
     this.sigArray = [];
     /**
        * Adds a signature to the credentials and returns the index off the added signature.
@@ -10644,6 +15014,22 @@ class Credential {
       /* istanbul ignore next */
       this.sigArray = sigarray;
     }
+  }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "sigArray": this.sigArray.map(s => s.serialize(encoding))
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.sigArray = fields["sigArray"].map(s => {
+      let sig = new Signature();
+      sig.deserialize(s, encoding);
+      return sig;
+    });
   }
 
   fromBuffer(bytes, offset = 0) {
@@ -10678,6 +15064,317 @@ class Credential {
 }
 
 exports.Credential = Credential;
+
+/***/ }),
+
+/***/ "./node_modules/avalanche/dist/common/evmtx.js":
+/*!*****************************************************!*\
+  !*** ./node_modules/avalanche/dist/common/evmtx.js ***!
+  \*****************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+/**
+ * @packageDocumentation
+ * @module Common-Transactions
+ */
+
+var __importDefault = this && this.__importDefault || function (mod) {
+  return mod && mod.__esModule ? mod : {
+    "default": mod
+  };
+};
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.EVMStandardTx = exports.EVMStandardUnsignedTx = exports.EVMStandardBaseTx = void 0;
+
+const buffer_1 = __webpack_require__(/*! buffer/ */ "./node_modules/node-libs-browser/node_modules/buffer/index.js");
+
+const bintools_1 = __importDefault(__webpack_require__(/*! ../utils/bintools */ "./node_modules/avalanche/dist/utils/bintools.js"));
+
+const bn_js_1 = __importDefault(__webpack_require__(/*! bn.js */ "./node_modules/avalanche/node_modules/bn.js/lib/bn.js"));
+
+const input_1 = __webpack_require__(/*! ./input */ "./node_modules/avalanche/dist/common/input.js");
+
+const output_1 = __webpack_require__(/*! ./output */ "./node_modules/avalanche/dist/common/output.js");
+
+const constants_1 = __webpack_require__(/*! ../utils/constants */ "./node_modules/avalanche/dist/utils/constants.js");
+
+const serialization_1 = __webpack_require__(/*! ../utils/serialization */ "./node_modules/avalanche/dist/utils/serialization.js");
+/**
+ * @ignore
+ */
+
+
+const bintools = bintools_1.default.getInstance();
+const serializer = serialization_1.Serialization.getInstance();
+/**
+ * Class representing a base for all transactions.
+ */
+
+class EVMStandardBaseTx extends serialization_1.Serializable {
+  /**
+   * Class representing a StandardBaseTx which is the foundation for all transactions.
+   *
+   * @param networkid Optional networkid, [[DefaultNetworkID]]
+   * @param blockchainid Optional blockchainid, default Buffer.alloc(32, 16)
+   * @param outs Optional array of the [[TransferableOutput]]s
+   * @param ins Optional array of the [[TransferableInput]]s
+   */
+  constructor(networkid = constants_1.DefaultNetworkID, blockchainid = buffer_1.Buffer.alloc(32, 16)) {
+    super();
+    this._typeName = "EVMStandardBaseTx";
+    this._typeID = undefined;
+    this.networkid = buffer_1.Buffer.alloc(4);
+    this.blockchainid = buffer_1.Buffer.alloc(32);
+    /**
+     * Returns the NetworkID as a number
+     */
+
+    this.getNetworkID = () => this.networkid.readUInt32BE(0);
+    /**
+     * Returns the Buffer representation of the BlockchainID
+     */
+
+
+    this.getBlockchainID = () => this.blockchainid;
+
+    this.networkid.writeUInt32BE(networkid, 0);
+    this.blockchainid = blockchainid;
+  }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "networkid": serializer.encoder(this.networkid, encoding, "Buffer", "decimalString"),
+      "blockchainid": serializer.encoder(this.blockchainid, encoding, "Buffer", "cb58")
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.networkid = serializer.decoder(fields["networkid"], encoding, "decimalString", "Buffer", 4);
+    this.blockchainid = serializer.decoder(fields["blockchainid"], encoding, "cb58", "Buffer", 32);
+  }
+  /**
+   * Returns a {@link https://github.com/feross/buffer|Buffer} representation of the [[StandardBaseTx]].
+   */
+
+
+  toBuffer() {
+    let bsize = this.networkid.length + this.blockchainid.length;
+    const barr = [this.networkid, this.blockchainid];
+    const buff = buffer_1.Buffer.concat(barr, bsize);
+    return buff;
+  }
+  /**
+   * Returns a base-58 representation of the [[StandardBaseTx]].
+   */
+
+
+  toString() {
+    return bintools.bufferToB58(this.toBuffer());
+  }
+
+}
+
+exports.EVMStandardBaseTx = EVMStandardBaseTx;
+/**
+ * Class representing an unsigned transaction.
+ */
+
+class EVMStandardUnsignedTx extends serialization_1.Serializable {
+  constructor(transaction = undefined, codecid = 0) {
+    super();
+    this._typeName = "StandardUnsignedTx";
+    this._typeID = undefined;
+    this.codecid = 0;
+    /**
+     * Returns the CodecID as a number
+     */
+
+    this.getCodecID = () => this.codecid;
+    /**
+    * Returns the {@link https://github.com/feross/buffer|Buffer} representation of the CodecID
+    */
+
+
+    this.getCodecIDBuffer = () => {
+      let codecBuf = buffer_1.Buffer.alloc(2);
+      codecBuf.writeUInt16BE(this.codecid, 0);
+      return codecBuf;
+    };
+    /**
+     * Returns the inputTotal as a BN
+     */
+
+
+    this.getInputTotal = assetID => {
+      const ins = [];
+      const aIDHex = assetID.toString('hex');
+      let total = new bn_js_1.default(0);
+      ins.forEach(input => {
+        // only check StandardAmountInputs
+        if (input.getInput() instanceof input_1.StandardAmountInput && aIDHex === input.getAssetID().toString('hex')) {
+          const i = input.getInput();
+          total = total.add(i.getAmount());
+        }
+      });
+      return total;
+    };
+    /**
+     * Returns the outputTotal as a BN
+     */
+
+
+    this.getOutputTotal = assetID => {
+      const outs = [];
+      const aIDHex = assetID.toString('hex');
+      let total = new bn_js_1.default(0);
+      outs.forEach(out => {
+        // only check StandardAmountOutput
+        if (out.getOutput() instanceof output_1.StandardAmountOutput && aIDHex === out.getAssetID().toString('hex')) {
+          const output = out.getOutput();
+          total = total.add(output.getAmount());
+        }
+      });
+      return total;
+    };
+    /**
+     * Returns the number of burned tokens as a BN
+     */
+
+
+    this.getBurn = assetID => {
+      return this.getInputTotal(assetID).sub(this.getOutputTotal(assetID));
+    };
+
+    this.codecid = codecid;
+    this.transaction = transaction;
+  }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "codecid": serializer.encoder(this.codecid, encoding, "number", "decimalString", 2),
+      "transaction": this.transaction.serialize(encoding)
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.codecid = serializer.decoder(fields["codecid"], encoding, "decimalString", "number");
+  }
+
+  toBuffer() {
+    const codecid = this.getCodecIDBuffer();
+    const txtype = buffer_1.Buffer.alloc(4);
+    txtype.writeUInt32BE(this.transaction.getTxType(), 0);
+    const basebuff = this.transaction.toBuffer();
+    return buffer_1.Buffer.concat([codecid, txtype, basebuff], codecid.length + txtype.length + basebuff.length);
+  }
+
+}
+
+exports.EVMStandardUnsignedTx = EVMStandardUnsignedTx;
+/**
+ * Class representing a signed transaction.
+ */
+
+class EVMStandardTx extends serialization_1.Serializable {
+  /**
+   * Class representing a signed transaction.
+   *
+   * @param unsignedTx Optional [[StandardUnsignedTx]]
+   * @param signatures Optional array of [[Credential]]s
+   */
+  constructor(unsignedTx = undefined, credentials = undefined) {
+    super();
+    this._typeName = "StandardTx";
+    this._typeID = undefined;
+    this.unsignedTx = undefined;
+    this.credentials = [];
+    /**
+     * Returns the [[StandardUnsignedTx]]
+     */
+
+    this.getUnsignedTx = () => {
+      return this.unsignedTx;
+    };
+
+    if (typeof unsignedTx !== 'undefined') {
+      this.unsignedTx = unsignedTx;
+
+      if (typeof credentials !== 'undefined') {
+        this.credentials = credentials;
+      }
+    }
+  }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "unsignedTx": this.unsignedTx.serialize(encoding),
+      "credentials": this.credentials.map(c => c.serialize(encoding))
+    });
+  }
+
+  /**
+   * Returns a {@link https://github.com/feross/buffer|Buffer} representation of the [[StandardTx]].
+   */
+  toBuffer() {
+    const txbuff = this.unsignedTx.toBuffer();
+    let bsize = txbuff.length;
+    const credlen = buffer_1.Buffer.alloc(4);
+    credlen.writeUInt32BE(this.credentials.length, 0);
+    const barr = [txbuff, credlen];
+    bsize += credlen.length;
+    this.credentials.forEach(credential => {
+      const credid = buffer_1.Buffer.alloc(4);
+      credid.writeUInt32BE(credential.getCredentialID(), 0);
+      barr.push(credid);
+      bsize += credid.length;
+      const credbuff = credential.toBuffer();
+      bsize += credbuff.length;
+      barr.push(credbuff);
+    });
+    const buff = buffer_1.Buffer.concat(barr, bsize);
+    return buff;
+  }
+  /**
+   * Takes a base-58 string containing an [[StandardTx]], parses it, populates the class, and returns the length of the Tx in bytes.
+   *
+   * @param serialized A base-58 string containing a raw [[StandardTx]]
+   *
+   * @returns The length of the raw [[StandardTx]]
+   *
+   * @remarks
+   * unlike most fromStrings, it expects the string to be serialized in cb58 format
+   */
+
+
+  fromString(serialized) {
+    return this.fromBuffer(bintools.cb58Decode(serialized));
+  }
+  /**
+   * Returns a cb58 representation of the [[StandardTx]].
+   *
+   * @remarks
+   * unlike most toStrings, this returns in cb58 serialization format
+   */
+
+
+  toString() {
+    return bintools.cb58Encode(this.toBuffer());
+  }
+
+}
+
+exports.EVMStandardTx = EVMStandardTx;
 
 /***/ }),
 
@@ -10718,7 +15415,11 @@ __exportStar(__webpack_require__(/*! ./assetamount */ "./node_modules/avalanche/
 
 __exportStar(__webpack_require__(/*! ./credentials */ "./node_modules/avalanche/dist/common/credentials.js"), exports);
 
+__exportStar(__webpack_require__(/*! ./evmtx */ "./node_modules/avalanche/dist/common/evmtx.js"), exports);
+
 __exportStar(__webpack_require__(/*! ./input */ "./node_modules/avalanche/dist/common/input.js"), exports);
+
+__exportStar(__webpack_require__(/*! ./interfaces */ "./node_modules/avalanche/dist/common/interfaces.js"), exports);
 
 __exportStar(__webpack_require__(/*! ./jrpcapi */ "./node_modules/avalanche/dist/common/jrpcapi.js"), exports);
 
@@ -10757,7 +15458,7 @@ var __importDefault = this && this.__importDefault || function (mod) {
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.StandardAmountInput = exports.StandardTransferableInput = exports.Input = void 0;
+exports.StandardAmountInput = exports.StandardTransferableInput = exports.StandardParseableInput = exports.Input = void 0;
 /**
  * @packageDocumentation
  * @module Common-Inputs
@@ -10770,15 +15471,21 @@ const bintools_1 = __importDefault(__webpack_require__(/*! ../utils/bintools */ 
 const bn_js_1 = __importDefault(__webpack_require__(/*! bn.js */ "./node_modules/avalanche/node_modules/bn.js/lib/bn.js"));
 
 const credentials_1 = __webpack_require__(/*! ./credentials */ "./node_modules/avalanche/dist/common/credentials.js");
+
+const serialization_1 = __webpack_require__(/*! ../utils/serialization */ "./node_modules/avalanche/dist/utils/serialization.js");
 /**
  * @ignore
  */
 
 
 const bintools = bintools_1.default.getInstance();
+const serializer = serialization_1.Serialization.getInstance();
 
-class Input {
+class Input extends serialization_1.Serializable {
   constructor() {
+    super(...arguments);
+    this._typeName = "Input";
+    this._typeID = undefined;
     this.sigCount = buffer_1.Buffer.alloc(4);
     this.sigIdxs = []; // idxs of signers from utxo
 
@@ -10788,11 +15495,11 @@ class Input {
 
     this.getSigIdxs = () => this.sigIdxs;
     /**
-       * Creates and adds a [[SigIdx]] to the [[Input]].
-       *
-       * @param addressIdx The index of the address to reference in the signatures
-       * @param address The address of the source of the signature
-       */
+     * Creates and adds a [[SigIdx]] to the [[Input]].
+     *
+     * @param addressIdx The index of the address to reference in the signatures
+     * @param address The address of the source of the signature
+     */
 
 
     this.addSignatureIdx = (addressIdx, address) => {
@@ -10804,6 +15511,23 @@ class Input {
       this.sigIdxs.push(sigidx);
       this.sigCount.writeUInt32BE(this.sigIdxs.length, 0);
     };
+  }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "sigIdxs": this.sigIdxs.map(s => s.serialize(encoding))
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.sigIdxs = fields["sigIdxs"].map(s => {
+      let sidx = new credentials_1.SigIdx();
+      sidx.deserialize(s, encoding);
+      return sidx;
+    });
+    this.sigCount.writeUInt32BE(this.sigIdxs.length, 0);
   }
 
   fromBuffer(bytes, offset = 0) {
@@ -10837,8 +15561,8 @@ class Input {
     return buffer_1.Buffer.concat(barr, bsize);
   }
   /**
-     * Returns a base-58 representation of the [[Input]].
-     */
+   * Returns a base-58 representation of the [[Input]].
+   */
 
 
   toString() {
@@ -10861,45 +15585,94 @@ Input.comparator = () => (a, b) => {
   return buffer_1.Buffer.compare(asort, bsort);
 };
 
-class StandardTransferableInput {
+class StandardParseableInput extends serialization_1.Serializable {
   /**
-     * Class representing an [[StandardTransferableInput]] for a transaction.
-     *
-     * @param txid A {@link https://github.com/feross/buffer|Buffer} containing the transaction ID of the referenced UTXO
-     * @param outputidx A {@link https://github.com/feross/buffer|Buffer} containing the index of the output in the transaction consumed in the [[StandardTransferableInput]]
-     * @param assetID A {@link https://github.com/feross/buffer|Buffer} representing the assetID of the [[Input]]
-     * @param input An [[Input]] to be made transferable
-     */
+   * Class representing an [[StandardParseableInput]] for a transaction.
+   *
+   * @param input A number representing the InputID of the [[StandardParseableInput]]
+   */
+  constructor(input = undefined) {
+    super();
+    this._typeName = "StandardParseableInput";
+    this._typeID = undefined;
+
+    this.getInput = () => this.input;
+
+    if (input instanceof Input) {
+      this.input = input;
+    }
+  }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "input": this.input.serialize(encoding)
+    });
+  }
+
+  toBuffer() {
+    const inbuff = this.input.toBuffer();
+    const inid = buffer_1.Buffer.alloc(4);
+    inid.writeUInt32BE(this.input.getInputID(), 0);
+    const barr = [inid, inbuff];
+    return buffer_1.Buffer.concat(barr, inid.length + inbuff.length);
+  }
+
+}
+
+exports.StandardParseableInput = StandardParseableInput;
+/**
+ * Returns a function used to sort an array of [[StandardParseableInput]]s
+ */
+
+StandardParseableInput.comparator = () => (a, b) => {
+  const sorta = a.toBuffer();
+  const sortb = b.toBuffer();
+  return buffer_1.Buffer.compare(sorta, sortb);
+};
+
+class StandardTransferableInput extends StandardParseableInput {
+  /**
+   * Class representing an [[StandardTransferableInput]] for a transaction.
+   *
+   * @param txid A {@link https://github.com/feross/buffer|Buffer} containing the transaction ID of the referenced UTXO
+   * @param outputidx A {@link https://github.com/feross/buffer|Buffer} containing the index of the output in the transaction consumed in the [[StandardTransferableInput]]
+   * @param assetID A {@link https://github.com/feross/buffer|Buffer} representing the assetID of the [[Input]]
+   * @param input An [[Input]] to be made transferable
+   */
   constructor(txid = undefined, outputidx = undefined, assetID = undefined, input = undefined) {
+    super();
+    this._typeName = "StandardTransferableInput";
+    this._typeID = undefined;
     this.txid = buffer_1.Buffer.alloc(32);
     this.outputidx = buffer_1.Buffer.alloc(4);
     this.assetid = buffer_1.Buffer.alloc(32);
     /**
-       * Returns a {@link https://github.com/feross/buffer|Buffer} of the TxID.
-       */
+     * Returns a {@link https://github.com/feross/buffer|Buffer} of the TxID.
+     */
 
     this.getTxID = () => this.txid;
     /**
-       * Returns a {@link https://github.com/feross/buffer|Buffer}  of the OutputIdx.
-       */
+     * Returns a {@link https://github.com/feross/buffer|Buffer}  of the OutputIdx.
+     */
 
 
     this.getOutputIdx = () => this.outputidx;
     /**
-       * Returns a base-58 string representation of the UTXOID this [[StandardTransferableInput]] references.
-       */
+     * Returns a base-58 string representation of the UTXOID this [[StandardTransferableInput]] references.
+     */
 
 
     this.getUTXOID = () => bintools.bufferToB58(buffer_1.Buffer.concat([this.txid, this.outputidx]));
     /**
-       * Returns the input.
-       */
+     * Returns the input.
+     */
 
 
     this.getInput = () => this.input;
     /**
-       * Returns the assetID of the input.
-       */
+     * Returns the assetID of the input.
+     */
 
 
     this.getAssetID = () => this.assetid;
@@ -10911,23 +15684,37 @@ class StandardTransferableInput {
       this.assetid = assetID;
     }
   }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "txid": serializer.encoder(this.txid, encoding, "Buffer", "cb58"),
+      "outputidx": serializer.encoder(this.outputidx, encoding, "Buffer", "decimalString"),
+      "assetid": serializer.encoder(this.assetid, encoding, "Buffer", "cb58")
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.txid = serializer.decoder(fields["txid"], encoding, "cb58", "Buffer", 32);
+    this.outputidx = serializer.decoder(fields["outputidx"], encoding, "decimalString", "Buffer", 4);
+    this.assetid = serializer.decoder(fields["assetid"], encoding, "cb58", "Buffer", 32); //input deserialization must be implmented in child classes
+  }
   /**
-     * Returns a {@link https://github.com/feross/buffer|Buffer} representation of the [[StandardTransferableInput]].
-     */
+   * Returns a {@link https://github.com/feross/buffer|Buffer} representation of the [[StandardTransferableInput]].
+   */
 
 
   toBuffer() {
-    const inbuff = this.input.toBuffer();
-    const inputid = buffer_1.Buffer.alloc(4);
-    inputid.writeInt32BE(this.input.getInputID(), 0);
-    const bsize = this.txid.length + this.outputidx.length + this.assetid.length + inputid.length + inbuff.length;
-    const barr = [this.txid, this.outputidx, this.assetid, inputid, inbuff];
+    const parseableBuff = super.toBuffer();
+    const bsize = this.txid.length + this.outputidx.length + this.assetid.length + parseableBuff.length;
+    const barr = [this.txid, this.outputidx, this.assetid, parseableBuff];
     const buff = buffer_1.Buffer.concat(barr, bsize);
     return buff;
   }
   /**
-     * Returns a base-58 representation of the [[StandardTransferableInput]].
-     */
+   * Returns a base-58 representation of the [[StandardTransferableInput]].
+   */
 
 
   toString() {
@@ -10939,32 +15726,24 @@ class StandardTransferableInput {
 
 exports.StandardTransferableInput = StandardTransferableInput;
 /**
-   * Returns a function used to sort an array of [[StandardTransferableInput]]s
-   */
-
-StandardTransferableInput.comparator = () => (a, b) => {
-  const sorta = buffer_1.Buffer.concat([a.getTxID(), a.getOutputIdx()]);
-  const sortb = buffer_1.Buffer.concat([b.getTxID(), b.getOutputIdx()]);
-  return buffer_1.Buffer.compare(sorta, sortb);
-};
-/**
-* An [[Input]] class which specifies a token amount .
-*/
-
+ * An [[Input]] class which specifies a token amount .
+ */
 
 class StandardAmountInput extends Input {
   /**
-     * An [[AmountInput]] class which issues a payment on an assetID.
-     *
-     * @param amount A {@link https://github.com/indutny/bn.js/|BN} representing the amount in the input
-     */
+   * An [[AmountInput]] class which issues a payment on an assetID.
+   *
+   * @param amount A {@link https://github.com/indutny/bn.js/|BN} representing the amount in the input
+   */
   constructor(amount = undefined) {
     super();
+    this._typeName = "StandardAmountInput";
+    this._typeID = undefined;
     this.amount = buffer_1.Buffer.alloc(8);
     this.amountValue = new bn_js_1.default(0);
     /**
-       * Returns the amount as a {@link https://github.com/indutny/bn.js/|BN}.
-       */
+     * Returns the amount as a {@link https://github.com/indutny/bn.js/|BN}.
+     */
 
     this.getAmount = () => this.amountValue.clone();
 
@@ -10973,9 +15752,22 @@ class StandardAmountInput extends Input {
       this.amount = bintools.fromBNToBuffer(amount, 8);
     }
   }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "amount": serializer.encoder(this.amount, encoding, "Buffer", "decimalString", 8)
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.amount = serializer.decoder(fields["amount"], encoding, "decimalString", "Buffer", 8);
+    this.amountValue = bintools.fromBufferToBN(this.amount);
+  }
   /**
-     * Popuates the instance from a {@link https://github.com/feross/buffer|Buffer} representing the [[AmountInput]] and returns the size of the output.
-     */
+   * Popuates the instance from a {@link https://github.com/feross/buffer|Buffer} representing the [[AmountInput]] and returns the size of the input.
+   */
 
 
   fromBuffer(bytes, offset = 0) {
@@ -10985,8 +15777,8 @@ class StandardAmountInput extends Input {
     return super.fromBuffer(bytes, offset);
   }
   /**
-     * Returns the buffer representing the [[AmountInput]] instance.
-     */
+   * Returns the buffer representing the [[AmountInput]] instance.
+   */
 
 
   toBuffer() {
@@ -10999,6 +15791,26 @@ class StandardAmountInput extends Input {
 }
 
 exports.StandardAmountInput = StandardAmountInput;
+
+/***/ }),
+
+/***/ "./node_modules/avalanche/dist/common/interfaces.js":
+/*!**********************************************************!*\
+  !*** ./node_modules/avalanche/dist/common/interfaces.js ***!
+  \**********************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+/**
+ * @packageDocumentation
+ * @module Common-Interfaces
+ */
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
 
 /***/ }),
 
@@ -11193,10 +16005,6 @@ exports.StandardKeyPair = StandardKeyPair;
  */
 
 class StandardKeyChain {
-  /**
-     * Returns instance of [[StandardKeyChain]].
-     *
-     */
   constructor() {
     this.keys = {};
     /**
@@ -11306,12 +16114,15 @@ Object.defineProperty(exports, "__esModule", {
 exports.NBytes = void 0;
 
 const bintools_1 = __importDefault(__webpack_require__(/*! ../utils/bintools */ "./node_modules/avalanche/dist/utils/bintools.js"));
+
+const serialization_1 = __webpack_require__(/*! ../utils/serialization */ "./node_modules/avalanche/dist/utils/serialization.js");
 /**
  * @ignore
  */
 
 
 const bintools = bintools_1.default.getInstance();
+const serializer = serialization_1.Serialization.getInstance();
 /**
  * Abstract class that implements basic functionality for managing a
  * {@link https://github.com/feross/buffer|Buffer} of an exact length.
@@ -11320,23 +16131,38 @@ const bintools = bintools_1.default.getInstance();
  * the correct length.
  */
 
-class NBytes {
-  /**
-     * Returns instance of [[NBytes]].
-     */
+class NBytes extends serialization_1.Serializable {
   constructor() {
+    super(...arguments);
+    this._typeName = "NBytes";
+    this._typeID = undefined;
     /**
-       * Returns the length of the {@link https://github.com/feross/buffer|Buffer}.
-       *
-       * @returns The exact length requirement of this class
-       */
+     * Returns the length of the {@link https://github.com/feross/buffer|Buffer}.
+     *
+     * @returns The exact length requirement of this class
+     */
+
     this.getSize = () => this.bsize;
   }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "bsize": serializer.encoder(this.bsize, encoding, "number", "decimalString", 4),
+      "bytes": serializer.encoder(this.bytes, encoding, "Buffer", "hex", this.bsize)
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.bsize = serializer.decoder(fields["bsize"], encoding, "decimalString", "number", 4);
+    this.bytes = serializer.decoder(fields["bytes"], encoding, "hex", "Buffer", this.bsize);
+  }
   /**
-     * Takes a base-58 encoded string, verifies its length, and stores it.
-     *
-     * @returns The size of the {@link https://github.com/feross/buffer|Buffer}
-     */
+   * Takes a base-58 encoded string, verifies its length, and stores it.
+   *
+   * @returns The size of the {@link https://github.com/feross/buffer|Buffer}
+   */
 
 
   fromString(b58str) {
@@ -11353,17 +16179,17 @@ class NBytes {
     return this.bsize;
   }
   /**
-     * Takes a [[Buffer]], verifies its length, and stores it.
-     *
-     * @returns The size of the {@link https://github.com/feross/buffer|Buffer}
-     */
+   * Takes a [[Buffer]], verifies its length, and stores it.
+   *
+   * @returns The size of the {@link https://github.com/feross/buffer|Buffer}
+   */
 
 
   fromBuffer(buff, offset = 0) {
     try {
       if (buff.length - offset < this.bsize) {
         /* istanbul ignore next */
-        throw new Error(`Buffer length must be at least ${this.bsize} bytes.`);
+        throw new Error(`Buffer length must be ${this.bsize} bytes. Only have ${buff.length - offset} remaining in buffer.`);
       }
 
       this.bytes = bintools.copyFrom(buff, offset, offset + this.bsize);
@@ -11378,16 +16204,16 @@ class NBytes {
     return offset + this.bsize;
   }
   /**
-     * @returns A reference to the stored {@link https://github.com/feross/buffer|Buffer}
-     */
+   * @returns A reference to the stored {@link https://github.com/feross/buffer|Buffer}
+   */
 
 
   toBuffer() {
     return this.bytes;
   }
   /**
-     * @returns A base-58 string of the stored {@link https://github.com/feross/buffer|Buffer}
-     */
+   * @returns A base-58 string of the stored {@link https://github.com/feross/buffer|Buffer}
+   */
 
 
   toString() {
@@ -11434,22 +16260,28 @@ const bintools_1 = __importDefault(__webpack_require__(/*! ../utils/bintools */ 
 const nbytes_1 = __webpack_require__(/*! ./nbytes */ "./node_modules/avalanche/dist/common/nbytes.js");
 
 const helperfunctions_1 = __webpack_require__(/*! ../utils/helperfunctions */ "./node_modules/avalanche/dist/utils/helperfunctions.js");
+
+const serialization_1 = __webpack_require__(/*! ../utils/serialization */ "./node_modules/avalanche/dist/utils/serialization.js");
 /**
  * @ignore
  */
 
 
 const bintools = bintools_1.default.getInstance();
+const serializer = serialization_1.Serialization.getInstance();
 /**
  * Class for representing an address used in [[Output]] types
  */
 
 class Address extends nbytes_1.NBytes {
   /**
-     * Class for representing an address used in [[Output]] types
-     */
+   * Class for representing an address used in [[Output]] types
+   */
   constructor() {
     super();
+    this._typeName = "Address";
+    this._typeID = undefined; //serialize and deserialize both are inherited
+
     this.bytes = buffer_1.Buffer.alloc(20);
     this.bsize = 20;
   }
@@ -11514,15 +16346,18 @@ Address.comparator = () => (a, b) => buffer_1.Buffer.compare(a.toBuffer(), b.toB
  */
 
 
-class OutputOwners {
+class OutputOwners extends serialization_1.Serializable {
   /**
-     * An [[Output]] class which contains addresses, locktimes, and thresholds.
-     *
-     * @param addresses An array of {@link https://github.com/feross/buffer|Buffer}s representing output owner's addresses
-     * @param locktime A {@link https://github.com/indutny/bn.js/|BN} representing the locktime
-     * @param threshold A number representing the the threshold number of signers required to sign the transaction
-     */
+   * An [[Output]] class which contains addresses, locktimes, and thresholds.
+   *
+   * @param addresses An array of {@link https://github.com/feross/buffer|Buffer}s representing output owner's addresses
+   * @param locktime A {@link https://github.com/indutny/bn.js/|BN} representing the locktime
+   * @param threshold A number representing the the threshold number of signers required to sign the transaction
+   */
   constructor(addresses = undefined, locktime = undefined, threshold = undefined) {
+    super();
+    this._typeName = "OutputOwners";
+    this._typeID = undefined;
     this.locktime = buffer_1.Buffer.alloc(8);
     this.threshold = buffer_1.Buffer.alloc(4);
     this.numaddrs = buffer_1.Buffer.alloc(4);
@@ -11533,14 +16368,14 @@ class OutputOwners {
 
     this.getThreshold = () => this.threshold.readUInt32BE(0);
     /**
-       * Returns the a {@link https://github.com/indutny/bn.js/|BN} repersenting the UNIX Timestamp when the lock is made available.
-       */
+     * Returns the a {@link https://github.com/indutny/bn.js/|BN} repersenting the UNIX Timestamp when the lock is made available.
+     */
 
 
     this.getLocktime = () => bintools.fromBufferToBN(this.locktime);
     /**
-       * Returns an array of {@link https://github.com/feross/buffer|Buffer}s for the addresses.
-       */
+     * Returns an array of {@link https://github.com/feross/buffer|Buffer}s for the addresses.
+     */
 
 
     this.getAddresses = () => {
@@ -11553,12 +16388,12 @@ class OutputOwners {
       return result;
     };
     /**
-       * Returns the index of the address.
-       *
-       * @param address A {@link https://github.com/feross/buffer|Buffer} of the address to look up to return its index.
-       *
-       * @returns The index of the address.
-       */
+     * Returns the index of the address.
+     *
+     * @param address A {@link https://github.com/feross/buffer|Buffer} of the address to look up to return its index.
+     *
+     * @returns The index of the address.
+     */
 
 
     this.getAddressIdx = address => {
@@ -11573,12 +16408,12 @@ class OutputOwners {
       return -1;
     };
     /**
-       * Returns the address from the index provided.
-       *
-       * @param idx The index of the address.
-       *
-       * @returns Returns the string representing the address.
-       */
+     * Returns the address from the index provided.
+     *
+     * @param idx The index of the address.
+     *
+     * @returns Returns the string representing the address.
+     */
 
 
     this.getAddress = idx => {
@@ -11589,8 +16424,8 @@ class OutputOwners {
       throw new Error('Error - Output.getAddress: idx out of range');
     };
     /**
-       * Given an array of address {@link https://github.com/feross/buffer|Buffer}s and an optional timestamp, returns true if the addresses meet the threshold required to spend the output.
-       */
+     * Given an array of address {@link https://github.com/feross/buffer|Buffer}s and an optional timestamp, returns true if the addresses meet the threshold required to spend the output.
+     */
 
 
     this.meetsThreshold = (addresses, asOf = undefined) => {
@@ -11612,8 +16447,8 @@ class OutputOwners {
       return false;
     };
     /**
-       * Given an array of addresses and an optional timestamp, select an array of address {@link https://github.com/feross/buffer|Buffer}s of qualified spenders for the output.
-       */
+     * Given an array of addresses and an optional timestamp, select an array of address {@link https://github.com/feross/buffer|Buffer}s of qualified spenders for the output.
+     */
 
 
     this.getSpenders = (addresses, asOf = undefined) => {
@@ -11667,9 +16502,31 @@ class OutputOwners {
       this.locktime = bintools.fromBNToBuffer(locktime, 8);
     }
   }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "locktime": serializer.encoder(this.locktime, encoding, "Buffer", "decimalString", 8),
+      "threshold": serializer.encoder(this.threshold, encoding, "Buffer", "decimalString", 4),
+      "addresses": this.addresses.map(a => a.serialize(encoding))
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.locktime = serializer.decoder(fields["locktime"], encoding, "decimalString", "Buffer", 8);
+    this.threshold = serializer.decoder(fields["threshold"], encoding, "decimalString", "Buffer", 4);
+    this.addresses = fields["addresses"].map(a => {
+      let addr = new Address();
+      addr.deserialize(a, encoding);
+      return addr;
+    });
+    this.numaddrs = buffer_1.Buffer.alloc(4);
+    this.numaddrs.writeUInt32BE(this.addresses.length, 0);
+  }
   /**
-     * Returns a base-58 string representing the [[Output]].
-     */
+   * Returns a base-58 string representing the [[Output]].
+   */
 
 
   fromBuffer(bytes, offset = 0) {
@@ -11692,8 +16549,8 @@ class OutputOwners {
     return offset;
   }
   /**
-     * Returns the buffer representing the [[Output]] instance.
-     */
+   * Returns the buffer representing the [[Output]] instance.
+   */
 
 
   toBuffer() {
@@ -11711,8 +16568,8 @@ class OutputOwners {
     return buffer_1.Buffer.concat(barr, bsize);
   }
   /**
-     * Returns a base-58 string representing the [[Output]].
-     */
+   * Returns a base-58 string representing the [[Output]].
+   */
 
 
   toString() {
@@ -11735,22 +16592,40 @@ OutputOwners.comparator = () => (a, b) => {
   return buffer_1.Buffer.compare(asort, bsort);
 };
 
-class Output extends OutputOwners {}
+class Output extends OutputOwners {
+  constructor() {
+    super(...arguments);
+    this._typeName = "Output";
+    this._typeID = undefined;
+  }
+
+}
 
 exports.Output = Output;
 
-class StandardParseableOutput {
+class StandardParseableOutput extends serialization_1.Serializable {
   /**
    * Class representing an [[ParseableOutput]] for a transaction.
    *
    * @param output A number representing the InputID of the [[ParseableOutput]]
    */
   constructor(output = undefined) {
+    super();
+    this._typeName = "StandardParseableOutput";
+    this._typeID = undefined;
+
     this.getOutput = () => this.output;
 
     if (output instanceof Output) {
       this.output = output;
     }
+  }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "output": this.output.serialize(encoding)
+    });
   }
 
   toBuffer() {
@@ -11783,6 +16658,8 @@ class StandardTransferableOutput extends StandardParseableOutput {
    */
   constructor(assetID = undefined, output = undefined) {
     super(output);
+    this._typeName = "StandardTransferableOutput";
+    this._typeID = undefined;
     this.assetID = undefined;
 
     this.getAssetID = () => this.assetID;
@@ -11792,46 +16669,73 @@ class StandardTransferableOutput extends StandardParseableOutput {
     }
   }
 
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "assetID": serializer.encoder(this.assetID, encoding, "Buffer", "cb58")
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.assetID = serializer.decoder(fields["assetID"], encoding, "cb58", "Buffer", 32);
+  }
+
   toBuffer() {
-    const parseeableBuff = super.toBuffer();
-    const barr = [this.assetID, parseeableBuff];
-    return buffer_1.Buffer.concat(barr, this.assetID.length + parseeableBuff.length);
+    const parseableBuff = super.toBuffer();
+    const barr = [this.assetID, parseableBuff];
+    return buffer_1.Buffer.concat(barr, this.assetID.length + parseableBuff.length);
   }
 
 }
 
 exports.StandardTransferableOutput = StandardTransferableOutput;
 /**
-* An [[Output]] class which specifies a token amount .
-*/
+ * An [[Output]] class which specifies a token amount .
+ */
 
 class StandardAmountOutput extends Output {
   /**
-     * A [[BaseAmountOutput]] class which issues a payment on an assetID.
-     *
-     * @param amount A {@link https://github.com/indutny/bn.js/|BN} representing the amount in the output
-     * @param addresses An array of {@link https://github.com/feross/buffer|Buffer}s representing addresses
-     * @param locktime A {@link https://github.com/indutny/bn.js/|BN} representing the locktime
-     * @param threshold A number representing the the threshold number of signers required to sign the transaction
-        */
+   * A [[StandardAmountOutput]] class which issues a payment on an assetID.
+   *
+   * @param amount A {@link https://github.com/indutny/bn.js/|BN} representing the amount in the output
+   * @param addresses An array of {@link https://github.com/feross/buffer|Buffer}s representing addresses
+   * @param locktime A {@link https://github.com/indutny/bn.js/|BN} representing the locktime
+   * @param threshold A number representing the the threshold number of signers required to sign the transaction
+   */
   constructor(amount = undefined, addresses = undefined, locktime = undefined, threshold = undefined) {
     super(addresses, locktime, threshold);
+    this._typeName = "StandardAmountOutput";
+    this._typeID = undefined;
     this.amount = buffer_1.Buffer.alloc(8);
     this.amountValue = new bn_js_1.default(0);
     /**
-       * Returns the amount as a {@link https://github.com/indutny/bn.js/|BN}.
-       */
+     * Returns the amount as a {@link https://github.com/indutny/bn.js/|BN}.
+     */
 
     this.getAmount = () => this.amountValue.clone();
 
-    if (amount) {
+    if (typeof amount !== "undefined") {
       this.amountValue = amount.clone();
       this.amount = bintools.fromBNToBuffer(amount, 8);
     }
   }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "amount": serializer.encoder(this.amount, encoding, "Buffer", "decimalString", 8)
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.amount = serializer.decoder(fields["amount"], encoding, "decimalString", "Buffer", 8);
+    this.amountValue = bintools.fromBufferToBN(this.amount);
+  }
   /**
-     * Popuates the instance from a {@link https://github.com/feross/buffer|Buffer} representing the [[StandardAmountOutput]] and returns the size of the output.
-     */
+   * Popuates the instance from a {@link https://github.com/feross/buffer|Buffer} representing the [[StandardAmountOutput]] and returns the size of the output.
+   */
 
 
   fromBuffer(outbuff, offset = 0) {
@@ -11841,8 +16745,8 @@ class StandardAmountOutput extends Output {
     return super.fromBuffer(outbuff, offset);
   }
   /**
-     * Returns the buffer representing the [[StandardAmountOutput]] instance.
-     */
+   * Returns the buffer representing the [[StandardAmountOutput]] instance.
+   */
 
 
   toBuffer() {
@@ -11863,14 +16767,28 @@ exports.StandardAmountOutput = StandardAmountOutput;
 class BaseNFTOutput extends Output {
   constructor() {
     super(...arguments);
+    this._typeName = "BaseNFTOutput";
+    this._typeID = undefined;
     this.groupID = buffer_1.Buffer.alloc(4);
     /**
-       * Returns the groupID as a number.
-       */
+     * Returns the groupID as a number.
+     */
 
     this.getGroupID = () => {
       return this.groupID.readUInt32BE(0);
     };
+  }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "groupID": serializer.encoder(this.groupID, encoding, "Buffer", "decimalString", 4)
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.groupID = serializer.decoder(fields["groupID"], encoding, "decimalString", "Buffer", 4);
   }
 
 }
@@ -12316,8 +17234,6 @@ class SECP256k1KeyPair extends keychain_1.StandardKeyPair {
       const pubk = ec.recoverPubKey(msg, sigObj, sigObj.recoveryParam);
       return buffer_1.Buffer.from(pubk.encodeCompressed());
     };
-
-    this.generateKey();
   }
 
 }
@@ -12330,13 +17246,6 @@ exports.SECP256k1KeyPair = SECP256k1KeyPair;
  */
 
 class SECP256k1KeyChain extends keychain_1.StandardKeyChain {
-  /**
-   * Returns instance of SECP256k1KeyChain.
-   */
-  constructor() {
-    super();
-  }
-
   addKey(newKey) {
     super.addKey(newKey);
   }
@@ -12383,17 +17292,20 @@ const input_1 = __webpack_require__(/*! ./input */ "./node_modules/avalanche/dis
 const output_1 = __webpack_require__(/*! ./output */ "./node_modules/avalanche/dist/common/output.js");
 
 const constants_1 = __webpack_require__(/*! ../utils/constants */ "./node_modules/avalanche/dist/utils/constants.js");
+
+const serialization_1 = __webpack_require__(/*! ../utils/serialization */ "./node_modules/avalanche/dist/utils/serialization.js");
 /**
  * @ignore
  */
 
 
 const bintools = bintools_1.default.getInstance();
+const serializer = serialization_1.Serialization.getInstance();
 /**
  * Class representing a base for all transactions.
  */
 
-class StandardBaseTx {
+class StandardBaseTx extends serialization_1.Serializable {
   /**
    * Class representing a StandardBaseTx which is the foundation for all transactions.
    *
@@ -12404,6 +17316,9 @@ class StandardBaseTx {
    * @param memo Optional {@link https://github.com/feross/buffer|Buffer} for the memo field
    */
   constructor(networkid = constants_1.DefaultNetworkID, blockchainid = buffer_1.Buffer.alloc(32, 16), outs = undefined, ins = undefined, memo = undefined) {
+    super();
+    this._typeName = "StandardBaseTx";
+    this._typeID = undefined;
     this.networkid = buffer_1.Buffer.alloc(4);
     this.blockchainid = buffer_1.Buffer.alloc(32);
     this.numouts = buffer_1.Buffer.alloc(4);
@@ -12420,18 +17335,6 @@ class StandardBaseTx {
 
 
     this.getBlockchainID = () => this.blockchainid;
-    /**
-     * Returns the array of [[StandardTransferableInput]]s
-     */
-
-
-    this.getIns = () => this.ins;
-    /**
-     * Returns the array of [[StandardTransferableOutput]]s
-     */
-
-
-    this.getOuts = () => this.outs;
     /**
      * Returns the {@link https://github.com/feross/buffer|Buffer} representation of the memo
      */
@@ -12455,6 +17358,24 @@ class StandardBaseTx {
       this.numins.writeUInt32BE(ins.length, 0);
       this.ins = ins.sort(input_1.StandardTransferableInput.comparator());
     }
+  }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "networkid": serializer.encoder(this.networkid, encoding, "Buffer", "decimalString"),
+      "blockchainid": serializer.encoder(this.blockchainid, encoding, "Buffer", "cb58"),
+      "outs": this.outs.map(o => o.serialize(encoding)),
+      "ins": this.ins.map(i => i.serialize(encoding)),
+      "memo": serializer.encoder(this.memo, encoding, "Buffer", "hex")
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.networkid = serializer.decoder(fields["networkid"], encoding, "decimalString", "Buffer", 4);
+    this.blockchainid = serializer.decoder(fields["blockchainid"], encoding, "cb58", "Buffer", 32);
+    this.memo = serializer.decoder(fields["memo"], encoding, "hex", "Buffer");
   }
   /**
    * Returns a {@link https://github.com/feross/buffer|Buffer} representation of the [[StandardBaseTx]].
@@ -12509,8 +17430,11 @@ exports.StandardBaseTx = StandardBaseTx;
  * Class representing an unsigned transaction.
  */
 
-class StandardUnsignedTx {
+class StandardUnsignedTx extends serialization_1.Serializable {
   constructor(transaction = undefined, codecid = 0) {
+    super();
+    this._typeName = "StandardUnsignedTx";
+    this._typeID = undefined;
     this.codecid = 0;
     /**
      * Returns the CodecID as a number
@@ -12575,14 +17499,22 @@ class StandardUnsignedTx {
     this.getBurn = assetID => {
       return this.getInputTotal(assetID).sub(this.getOutputTotal(assetID));
     };
-    /**
-     * Returns the Transaction
-     */
 
-
-    this.getTransaction = () => this.transaction;
-
+    this.codecid = codecid;
     this.transaction = transaction;
+  }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "codecid": serializer.encoder(this.codecid, encoding, "number", "decimalString", 2),
+      "transaction": this.transaction.serialize(encoding)
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.codecid = serializer.decoder(fields["codecid"], encoding, "decimalString", "number");
   }
 
   toBuffer() {
@@ -12600,7 +17532,7 @@ exports.StandardUnsignedTx = StandardUnsignedTx;
  * Class representing a signed transaction.
  */
 
-class StandardTx {
+class StandardTx extends serialization_1.Serializable {
   /**
    * Class representing a signed transaction.
    *
@@ -12608,6 +17540,9 @@ class StandardTx {
    * @param signatures Optional array of [[Credential]]s
    */
   constructor(unsignedTx = undefined, credentials = undefined) {
+    super();
+    this._typeName = "StandardTx";
+    this._typeID = undefined;
     this.unsignedTx = undefined;
     this.credentials = [];
     /**
@@ -12626,11 +17561,18 @@ class StandardTx {
       }
     }
   }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "unsignedTx": this.unsignedTx.serialize(encoding),
+      "credentials": this.credentials.map(c => c.serialize(encoding))
+    });
+  }
+
   /**
    * Returns a {@link https://github.com/feross/buffer|Buffer} representation of the [[StandardTx]].
    */
-
-
   toBuffer() {
     const txbuff = this.unsignedTx.toBuffer();
     let bsize = txbuff.length;
@@ -12719,17 +17661,20 @@ const bn_js_1 = __importDefault(__webpack_require__(/*! bn.js */ "./node_modules
 const output_1 = __webpack_require__(/*! ./output */ "./node_modules/avalanche/dist/common/output.js");
 
 const helperfunctions_1 = __webpack_require__(/*! ../utils/helperfunctions */ "./node_modules/avalanche/dist/utils/helperfunctions.js");
+
+const serialization_1 = __webpack_require__(/*! ../utils/serialization */ "./node_modules/avalanche/dist/utils/serialization.js");
 /**
  * @ignore
  */
 
 
 const bintools = bintools_1.default.getInstance();
+const serializer = serialization_1.Serialization.getInstance();
 /**
  * Class for representing a single StandardUTXO.
  */
 
-class StandardUTXO {
+class StandardUTXO extends serialization_1.Serializable {
   /**
      * Class for representing a single StandardUTXO.
      *
@@ -12740,6 +17685,9 @@ class StandardUTXO {
      * @param outputid Optional {@link https://github.com/feross/buffer|Buffer} or number of the output ID for the StandardUTXO
      */
   constructor(codecID = 0, txid = undefined, outputidx = undefined, assetid = undefined, output = undefined) {
+    super();
+    this._typeName = "StandardUTXO";
+    this._typeID = undefined;
     this.codecid = buffer_1.Buffer.alloc(2);
     this.txid = buffer_1.Buffer.alloc(32);
     this.outputidx = buffer_1.Buffer.alloc(4);
@@ -12809,6 +17757,25 @@ class StandardUTXO {
       this.output = output;
     }
   }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    return Object.assign(Object.assign({}, fields), {
+      "codecid": serializer.encoder(this.codecid, encoding, "Buffer", "decimalString"),
+      "txid": serializer.encoder(this.txid, encoding, "Buffer", "cb58"),
+      "outputidx": serializer.encoder(this.outputidx, encoding, "Buffer", "decimalString"),
+      "assetid": serializer.encoder(this.assetid, encoding, "Buffer", "cb58"),
+      "output": this.output.serialize(encoding)
+    });
+  }
+
+  deserialize(fields, encoding = "hex") {
+    super.deserialize(fields, encoding);
+    this.codecid = serializer.decoder(fields["codecid"], encoding, "decimalString", "Buffer", 2);
+    this.txid = serializer.decoder(fields["txid"], encoding, "cb58", "Buffer", 32);
+    this.outputidx = serializer.decoder(fields["outputidx"], encoding, "decimalString", "Buffer", 4);
+    this.assetid = serializer.decoder(fields["assetid"], encoding, "cb58", "Buffer", 32);
+  }
   /**
      * Returns a {@link https://github.com/feross/buffer|Buffer} representation of the [[StandardUTXO]].
      */
@@ -12829,8 +17796,11 @@ exports.StandardUTXO = StandardUTXO;
  * Class representing a set of [[StandardUTXO]]s.
  */
 
-class StandardUTXOSet {
+class StandardUTXOSet extends serialization_1.Serializable {
   constructor() {
+    super(...arguments);
+    this._typeName = "StandardUTXOSet";
+    this._typeID = undefined;
     this.utxos = {};
     this.addressUTXOs = {}; // maps address to utxoids:locktime
 
@@ -13210,6 +18180,36 @@ class StandardUTXOSet {
       }
     };
   }
+
+  serialize(encoding = "hex") {
+    let fields = super.serialize(encoding);
+    let utxos = {};
+
+    for (let utxoid in this.utxos) {
+      let utxoidCleaned = serializer.encoder(utxoid, encoding, "base58", "base58");
+      utxos[utxoidCleaned] = this.utxos[utxoid].serialize(encoding);
+    }
+
+    let addressUTXOs = {};
+
+    for (let address in this.addressUTXOs) {
+      let addressCleaned = serializer.encoder(address, encoding, "hex", "cb58");
+      let utxobalance = {};
+
+      for (let utxoid in this.addressUTXOs[address]) {
+        let utxoidCleaned = serializer.encoder(utxoid, encoding, "base58", "base58");
+        utxobalance[utxoidCleaned] = serializer.encoder(this.addressUTXOs[address][utxoid], encoding, "BN", "decimalString");
+      }
+
+      addressUTXOs[addressCleaned] = utxobalance;
+    }
+
+    return Object.assign(Object.assign({}, fields), {
+      utxos,
+      addressUTXOs
+    });
+  }
+
   /**
      * Adds a [[StandardUTXO]] to the StandardUTXOSet.
      *
@@ -13218,8 +18218,6 @@ class StandardUTXOSet {
      *
      * @returns A [[StandardUTXO]] if one was added and undefined if nothing was added.
      */
-
-
   add(utxo, overwrite = false) {
     let utxovar = undefined;
 
@@ -13366,15 +18364,17 @@ const api_2 = __webpack_require__(/*! ./apis/auth/api */ "./node_modules/avalanc
 
 const api_3 = __webpack_require__(/*! ./apis/avm/api */ "./node_modules/avalanche/dist/apis/avm/api.js");
 
-const api_4 = __webpack_require__(/*! ./apis/health/api */ "./node_modules/avalanche/dist/apis/health/api.js");
+const api_4 = __webpack_require__(/*! ./apis/evm/api */ "./node_modules/avalanche/dist/apis/evm/api.js");
 
-const api_5 = __webpack_require__(/*! ./apis/info/api */ "./node_modules/avalanche/dist/apis/info/api.js");
+const api_5 = __webpack_require__(/*! ./apis/health/api */ "./node_modules/avalanche/dist/apis/health/api.js");
 
-const api_6 = __webpack_require__(/*! ./apis/keystore/api */ "./node_modules/avalanche/dist/apis/keystore/api.js");
+const api_6 = __webpack_require__(/*! ./apis/info/api */ "./node_modules/avalanche/dist/apis/info/api.js");
 
-const api_7 = __webpack_require__(/*! ./apis/metrics/api */ "./node_modules/avalanche/dist/apis/metrics/api.js");
+const api_7 = __webpack_require__(/*! ./apis/keystore/api */ "./node_modules/avalanche/dist/apis/keystore/api.js");
 
-const api_8 = __webpack_require__(/*! ./apis/platformvm/api */ "./node_modules/avalanche/dist/apis/platformvm/api.js");
+const api_8 = __webpack_require__(/*! ./apis/metrics/api */ "./node_modules/avalanche/dist/apis/metrics/api.js");
+
+const api_9 = __webpack_require__(/*! ./apis/platformvm/api */ "./node_modules/avalanche/dist/apis/platformvm/api.js");
 
 const constants_1 = __webpack_require__(/*! ./utils/constants */ "./node_modules/avalanche/dist/utils/constants.js");
 
@@ -13419,11 +18419,14 @@ class Avalanche extends avalanche_1.default {
      * @param protocol The protocol string to use before a "://" in a request,
      * ex: "http", "https", "git", "ws", etc ...
      * @param networkid Sets the NetworkID of the class. Default [[DefaultNetworkID]]
-     * @param avmChainID Sets the blockchainID for the AVM. Will try to auto-detect,
+     * @param XChainID Sets the blockchainID for the AVM. Will try to auto-detect,
      * otherwise default "4R5p2RXDGLqaifZE4hHWH9owe34pfoBULn1DrQTWivjg8o4aH"
+     * @param CChainID Sets the blockchainID for the EVM. Will try to auto-detect,
+     * otherwise default "2q9e4r6Mu3U68nU1fYjgbR6JvwrRx36CohpAX5UQxse55x1Q5"
+     * @param hrp The human-readable part of the bech32 addresses
      * @param skipinit Skips creating the APIs
      */
-  constructor(ip, port, protocol = 'http', networkID = constants_1.DefaultNetworkID, XChainID = undefined, hrp = undefined, skipinit = false) {
+  constructor(ip, port, protocol = 'http', networkID = constants_1.DefaultNetworkID, XChainID = undefined, CChainID = undefined, hrp = undefined, skipinit = false) {
     super(ip, port, protocol);
     /**
        * Returns a reference to the Admin RPC.
@@ -13436,6 +18439,12 @@ class Avalanche extends avalanche_1.default {
 
 
     this.Auth = () => this.apis.auth;
+    /**
+     * Returns a reference to the EVMAPI RPC pointed at the C-Chain.
+     */
+
+
+    this.CChain = () => this.apis.cchain;
     /**
        * Returns a reference to the AVM RPC pointed at the X-Chain.
        */
@@ -13474,13 +18483,22 @@ class Avalanche extends avalanche_1.default {
 
     this.PChain = () => this.apis.pchain;
 
-    let chainid = XChainID;
+    let xchainid = XChainID;
+    let cchainid = CChainID;
 
     if (typeof XChainID === 'undefined' || !XChainID || XChainID.toLowerCase() === 'x') {
       if (networkID.toString() in constants_1.Defaults.network) {
-        chainid = constants_1.Defaults.network[networkID].X.blockchainID;
+        xchainid = constants_1.Defaults.network[networkID].X.blockchainID;
       } else {
-        chainid = constants_1.Defaults.network[12345].X.blockchainID;
+        xchainid = constants_1.Defaults.network[12345].X.blockchainID;
+      }
+    }
+
+    if (typeof CChainID === 'undefined' || !CChainID || CChainID.toLowerCase() === 'c') {
+      if (networkID.toString() in constants_1.Defaults.network) {
+        cchainid = constants_1.Defaults.network[networkID].C.blockchainID;
+      } else {
+        cchainid = constants_1.Defaults.network[12345].C.blockchainID;
       }
     }
 
@@ -13499,12 +18517,13 @@ class Avalanche extends avalanche_1.default {
     if (!skipinit) {
       this.addAPI('admin', api_1.AdminAPI);
       this.addAPI('auth', api_2.AuthAPI);
-      this.addAPI('xchain', api_3.AVMAPI, '/ext/bc/X', chainid);
-      this.addAPI('health', api_4.HealthAPI);
-      this.addAPI('info', api_5.InfoAPI);
-      this.addAPI('keystore', api_6.KeystoreAPI);
-      this.addAPI('metrics', api_7.MetricsAPI);
-      this.addAPI('pchain', api_8.PlatformVMAPI);
+      this.addAPI('xchain', api_3.AVMAPI, '/ext/bc/X', xchainid);
+      this.addAPI('cchain', api_4.EVMAPI, '/ext/bc/C/avax', cchainid);
+      this.addAPI('health', api_5.HealthAPI);
+      this.addAPI('info', api_6.InfoAPI);
+      this.addAPI('keystore', api_7.KeystoreAPI);
+      this.addAPI('metrics', api_8.MetricsAPI);
+      this.addAPI('pchain', api_9.PlatformVMAPI);
     }
   }
 
@@ -13517,6 +18536,7 @@ exports.common = __importStar(__webpack_require__(/*! ./common */ "./node_module
 exports.admin = __importStar(__webpack_require__(/*! ./apis/admin */ "./node_modules/avalanche/dist/apis/admin/index.js"));
 exports.auth = __importStar(__webpack_require__(/*! ./apis/auth */ "./node_modules/avalanche/dist/apis/auth/index.js"));
 exports.avm = __importStar(__webpack_require__(/*! ./apis/avm */ "./node_modules/avalanche/dist/apis/avm/index.js"));
+exports.evm = __importStar(__webpack_require__(/*! ./apis/evm */ "./node_modules/avalanche/dist/apis/evm/index.js"));
 exports.health = __importStar(__webpack_require__(/*! ./apis/health */ "./node_modules/avalanche/dist/apis/health/index.js"));
 exports.info = __importStar(__webpack_require__(/*! ./apis/info */ "./node_modules/avalanche/dist/apis/info/index.js"));
 exports.keystore = __importStar(__webpack_require__(/*! ./apis/keystore */ "./node_modules/avalanche/dist/apis/keystore/index.js"));
@@ -13650,6 +18670,18 @@ class Base58 {
       return result;
     };
   }
+  /**
+   * Retrieves the Base58 singleton.
+   */
+
+
+  static getInstance() {
+    if (!Base58.instance) {
+      Base58.instance = new Base58();
+    }
+
+    return Base58.instance;
+  }
 
 }
 
@@ -13743,14 +18775,35 @@ const base58_1 = __webpack_require__(/*! ./base58 */ "./node_modules/avalanche/d
 class BinTools {
   constructor() {
     /**
+     * Returns true if meets requirements to parse as an address as Bech32 on X-Chain or P-Chain, otherwise false
+     * @param address the string to verify is address
+     */
+    this.isPrimaryBechAddress = address => {
+      const parts = address.trim().split('-');
+
+      if (parts.length !== 2) {
+        return false;
+      }
+
+      try {
+        bech32.fromWords(bech32.decode(parts[1]).words);
+      } catch (err) {
+        return false;
+      }
+
+      return true;
+    };
+    /**
        * Produces a string from a {@link https://github.com/feross/buffer|Buffer}
-       * representing a string.
+       * representing a string. ONLY USED IN TRANSACTION FORMATTING, ASSUMED LENGTH IS PREPENDED.
        *
        * @param buff The {@link https://github.com/feross/buffer|Buffer} to convert to a string
        */
+
+
     this.bufferToString = buff => this.copyFrom(buff, 2).toString('utf8');
     /**
-       * Produces a {@link https://github.com/feross/buffer|Buffer} from a string.
+       * Produces a {@link https://github.com/feross/buffer|Buffer} from a string. ONLY USED IN TRANSACTION FORMATTING, LENGTH IS PREPENDED.
        *
        * @param str The string to convert to a {@link https://github.com/feross/buffer|Buffer}
        */
@@ -13976,11 +19029,11 @@ class BinTools {
       return undefined;
     };
 
-    this.b58 = new base58_1.Base58();
+    this.b58 = base58_1.Base58.getInstance();
   }
   /**
-     * Retrieves the BinTools singleton.
-     */
+   * Retrieves the BinTools singleton.
+   */
 
 
   static getInstance() {
@@ -13989,6 +19042,71 @@ class BinTools {
     }
 
     return BinTools.instance;
+  }
+  /**
+   * Returns true if base64, otherwise false
+   * @param str the string to verify is Base64
+   */
+
+
+  isBase64(str) {
+    if (str === '' || str.trim() === '') {
+      return false;
+    }
+
+    try {
+      let b64 = buffer_1.Buffer.from(str, "base64");
+      return b64.toString("base64") === str;
+    } catch (err) {
+      return false;
+    }
+  }
+  /**
+   * Returns true if base58, otherwise false
+   * @param str the string to verify is base58
+   */
+
+
+  isBase58(str) {
+    if (str === '' || str.trim() === '') {
+      return false;
+    }
+
+    try {
+      return this.b58.encode(this.b58.decode(str)) === str;
+    } catch (err) {
+      return false;
+    }
+  }
+  /**
+   * Returns true if hexidecimal, otherwise false
+   * @param str the string to verify is hexidecimal
+   */
+
+
+  isHex(str) {
+    if (str === '' || str.trim() === '') {
+      return false;
+    }
+
+    return str.startsWith("0x") && str.slice(2).match(/^[0-9A-Fa-f]/g) || str.match(/^[0-9A-Fa-f]/g);
+  }
+  /**
+   * Returns true if decimal, otherwise false
+   * @param str the string to verify is hexidecimal
+   */
+
+
+  isDecimal(str) {
+    if (str === '' || str.trim() === '') {
+      return false;
+    }
+
+    try {
+      return new bn_js_1.default(str, 10).toString(10) === str.trim();
+    } catch (err) {
+      return false;
+    }
   }
 
 }
@@ -14020,7 +19138,7 @@ var __importDefault = this && this.__importDefault || function (mod) {
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.Defaults = exports.AVAXGWEI = exports.GWEI = exports.WEI = exports.NANOAVAX = exports.MICROAVAX = exports.MILLIAVAX = exports.CENTIAVAX = exports.DECIAVAX = exports.ONEAVAX = exports.PChainVMName = exports.CChainVMName = exports.XChainVMName = exports.PChainAlias = exports.CChainAlias = exports.XChainAlias = exports.PrimaryNetworkID = exports.PlatformChainID = exports.DefaultNetworkID = exports.FallbackNetworkName = exports.FallbackHRP = exports.NetworkNameToNetworkID = exports.NetworkIDToNetworkNames = exports.HRPToNetworkID = exports.NetworkIDToHRP = exports.PrimaryAssetAlias = exports.NodeIDPrefix = exports.PrivateKeyPrefix = void 0;
+exports.Defaults = exports.AVAXSTAKECAP = exports.AVAXGWEI = exports.GWEI = exports.WEI = exports.NANOAVAX = exports.MICROAVAX = exports.MILLIAVAX = exports.CENTIAVAX = exports.DECIAVAX = exports.ONEAVAX = exports.DefaultLocalGenesisPrivateKey = exports.PChainVMName = exports.CChainVMName = exports.XChainVMName = exports.PChainAlias = exports.CChainAlias = exports.XChainAlias = exports.PrimaryNetworkID = exports.PlatformChainID = exports.DefaultNetworkID = exports.FallbackEVMChainID = exports.FallbackNetworkName = exports.FallbackHRP = exports.NetworkNameToNetworkID = exports.NetworkIDToNetworkNames = exports.HRPToNetworkID = exports.NetworkIDToHRP = exports.PrimaryAssetAlias = exports.NodeIDPrefix = exports.PrivateKeyPrefix = void 0;
 
 const bn_js_1 = __importDefault(__webpack_require__(/*! bn.js */ "./node_modules/avalanche/node_modules/bn.js/lib/bn.js"));
 
@@ -14028,38 +19146,47 @@ exports.PrivateKeyPrefix = "PrivateKey-";
 exports.NodeIDPrefix = "NodeID-";
 exports.PrimaryAssetAlias = "AVAX";
 exports.NetworkIDToHRP = {
+  0: "custom",
   1: "avax",
   2: "cascade",
   3: "denali",
   4: "everest",
+  5: "fuji",
   12345: "local"
 };
 exports.HRPToNetworkID = {
+  "custom": 0,
   "avax": 1,
   "cascade": 2,
   "denali": 3,
   "everest": 4,
+  "fuji": 5,
   "local": 12345
 };
 exports.NetworkIDToNetworkNames = {
+  0: ["Manhattan"],
   1: ["Avalanche", "Mainnet"],
   2: ["Cascade"],
   3: ["Denali"],
-  4: ["Everest", "Testnet"],
+  4: ["Everest"],
+  5: ["Fuji", "Testnet"],
   12345: ["Local Network"]
 };
 exports.NetworkNameToNetworkID = {
+  "Manhattan": 0,
   "Avalanche": 1,
   "Mainnet": 1,
   "Cascade": 2,
   "Denali": 3,
   "Everest": 4,
-  "Testnet": 4,
+  "Fuji": 5,
+  "Testnet": 5,
   "Local Network": 12345
 };
 exports.FallbackHRP = "custom";
 exports.FallbackNetworkName = "Custom Network";
-exports.DefaultNetworkID = 4;
+exports.FallbackEVMChainID = 43112;
+exports.DefaultNetworkID = 1;
 exports.PlatformChainID = "11111111111111111111111111111111LpoYY";
 exports.PrimaryNetworkID = "11111111111111111111111111111111LpoYY";
 exports.XChainAlias = "X";
@@ -14068,6 +19195,7 @@ exports.PChainAlias = "P";
 exports.XChainVMName = "avm";
 exports.CChainVMName = "evm";
 exports.PChainVMName = "platformvm";
+exports.DefaultLocalGenesisPrivateKey = "ewoqjP7PxY4yr3iLTpLisriqt94hdyDFNgchSxGGztUrTXtNN";
 exports.ONEAVAX = new bn_js_1.default(1000000000);
 exports.DECIAVAX = exports.ONEAVAX.div(new bn_js_1.default(10));
 exports.CENTIAVAX = exports.ONEAVAX.div(new bn_js_1.default(100));
@@ -14076,122 +19204,222 @@ exports.MICROAVAX = exports.ONEAVAX.div(new bn_js_1.default(1000000));
 exports.NANOAVAX = exports.ONEAVAX.div(new bn_js_1.default(1000000000));
 exports.WEI = new bn_js_1.default(1);
 exports.GWEI = exports.WEI.mul(new bn_js_1.default(1000000000));
-exports.AVAXGWEI = exports.NANOAVAX.clone(); // TODO: UPDATE FOR MAINNET
-
-const n1X = {
-  blockchainID: '4ktRjsAKxgMr2aEzv9SWmrU7Xk5FniHUrVCX4P1TZSfTLZWFM',
+exports.AVAXGWEI = exports.NANOAVAX.clone();
+exports.AVAXSTAKECAP = exports.ONEAVAX.mul(new bn_js_1.default(3000000));
+const n0X = {
+  blockchainID: '2vrXWHgGxh5n3YsLHMV16YVVJTpT4z45Fmb4y3bL6si8kLCyg9',
   alias: exports.XChainAlias,
   vm: exports.XChainVMName,
-  fee: 1000000
+  fee: exports.MILLIAVAX,
+  creationTxFee: exports.CENTIAVAX
+};
+const n0P = {
+  blockchainID: exports.PlatformChainID,
+  alias: exports.PChainAlias,
+  vm: exports.PChainVMName,
+  fee: exports.MILLIAVAX,
+  creationTxFee: exports.CENTIAVAX,
+  minConsumption: 0.1,
+  maxConsumption: 0.12,
+  maxStakingDuration: new bn_js_1.default(31536000),
+  maxSupply: new bn_js_1.default(720000000).mul(exports.ONEAVAX),
+  minStake: exports.ONEAVAX.mul(new bn_js_1.default(2000)),
+  minStakeDuration: 2 * 7 * 24 * 60 * 60,
+  maxStakeDuration: 365 * 24 * 60 * 60,
+  minDelegationStake: exports.ONEAVAX.mul(new bn_js_1.default(25)),
+  minDelegationFee: new bn_js_1.default(2)
+};
+const n0C = {
+  blockchainID: '2fFZQibQXcd6LTE4rpBPBAkLVXFE91Kit8pgxaBG1mRnh5xqbb',
+  alias: exports.CChainAlias,
+  vm: exports.CChainVMName,
+  fee: exports.MILLIAVAX,
+  gasPrice: exports.GWEI.mul(new bn_js_1.default(470)),
+  chainID: 43111
+}; // TODO: UPDATE FOR MAINNET
+
+const n1X = {
+  blockchainID: '2oYMBNV4eNHyqk2fjjV5nVQLDbtmNJzq5s3qs3Lo6ftnC6FByM',
+  alias: exports.XChainAlias,
+  vm: exports.XChainVMName,
+  txFee: exports.MILLIAVAX,
+  creationTxFee: exports.CENTIAVAX
 };
 const n1P = {
   blockchainID: exports.PlatformChainID,
   alias: exports.PChainAlias,
   vm: exports.PChainVMName,
-  fee: 1000000,
+  txFee: exports.MILLIAVAX,
+  creationTxFee: exports.CENTIAVAX,
   minConsumption: 0.1,
   maxConsumption: 0.12,
   maxStakingDuration: new bn_js_1.default(31536000),
   maxSupply: new bn_js_1.default(720000000).mul(exports.ONEAVAX),
-  minStake: exports.ONEAVAX.mul(new bn_js_1.default(2000))
+  minStake: exports.ONEAVAX.mul(new bn_js_1.default(2000)),
+  minStakeDuration: 2 * 7 * 24 * 60 * 60,
+  maxStakeDuration: 365 * 24 * 60 * 60,
+  minDelegationStake: exports.ONEAVAX.mul(new bn_js_1.default(25)),
+  minDelegationFee: new bn_js_1.default(2)
 };
 const n1C = {
-  blockchainID: '2mUYSXfLrDtigwbzj1LxKVsHwELghc5sisoXrzJwLqAAQHF4i',
+  blockchainID: '2q9e4r6Mu3U68nU1fYjgbR6JvwrRx36CohpAX5UQxse55x1Q5',
   alias: exports.CChainAlias,
   vm: exports.CChainVMName,
-  fee: exports.GWEI.mul(new bn_js_1.default(470))
+  txFee: exports.MILLIAVAX,
+  gasPrice: exports.GWEI.mul(new bn_js_1.default(470)),
+  chainID: 43114
 }; // END TODO
 
 const n2X = {
   blockchainID: '4ktRjsAKxgMr2aEzv9SWmrU7Xk5FniHUrVCX4P1TZSfTLZWFM',
   alias: exports.XChainAlias,
   vm: exports.XChainVMName,
-  fee: 0
+  txFee: 0,
+  creationTxFee: 0
 };
 const n2P = {
   blockchainID: exports.PlatformChainID,
   alias: exports.PChainAlias,
   vm: exports.PChainVMName,
-  fee: 0,
+  txFee: 0,
+  creationTxFee: 0,
   minConsumption: 0.1,
   maxConsumption: 0.12,
   maxStakingDuration: new bn_js_1.default(31536000),
   maxSupply: new bn_js_1.default(720000000).mul(exports.ONEAVAX),
-  minStake: exports.ONEAVAX.mul(new bn_js_1.default(2000))
+  minStake: exports.ONEAVAX.mul(new bn_js_1.default(2000)),
+  minStakeDuration: 2 * 7 * 24 * 60 * 60,
+  maxStakeDuration: 365 * 24 * 60 * 60,
+  minDelegationStake: exports.ONEAVAX.mul(new bn_js_1.default(25)),
+  minDelegationFee: new bn_js_1.default(2)
 };
 const n2C = {
   blockchainID: '2mUYSXfLrDtigwbzj1LxKVsHwELghc5sisoXrzJwLqAAQHF4i',
   alias: exports.CChainAlias,
   vm: exports.CChainVMName,
-  fee: 0
+  gasPrice: 0
 };
 const n3X = {
   blockchainID: 'rrEWX7gc7D9mwcdrdBxBTdqh1a7WDVsMuadhTZgyXfFcRz45L',
   alias: exports.XChainAlias,
   vm: exports.XChainVMName,
-  fee: 0
+  txFee: 0,
+  creationTxFee: 0
 };
 const n3P = {
   blockchainID: '',
   alias: exports.PChainAlias,
   vm: exports.PChainVMName,
-  fee: 0,
+  txFee: 0,
+  creationTxFee: 0,
   minConsumption: 0.1,
   maxConsumption: 0.12,
   maxStakingDuration: new bn_js_1.default(31536000),
   maxSupply: new bn_js_1.default(720000000).mul(exports.ONEAVAX),
-  minStake: exports.ONEAVAX.mul(new bn_js_1.default(2000))
+  minStake: exports.ONEAVAX.mul(new bn_js_1.default(2000)),
+  minStakeDuration: 2 * 7 * 24 * 60 * 60,
+  maxStakeDuration: 365 * 24 * 60 * 60,
+  minDelegationStake: exports.ONEAVAX.mul(new bn_js_1.default(25)),
+  minDelegationFee: new bn_js_1.default(2)
 };
 const n3C = {
   blockchainID: 'zJytnh96Pc8rM337bBrtMvJDbEdDNjcXG3WkTNCiLp18ergm9',
   alias: exports.CChainAlias,
   vm: exports.CChainVMName,
-  fee: 0
-}; // TODO: UPDATE FOR EVEREST
-
+  gasPrice: 0
+};
 const n4X = {
   blockchainID: 'jnUjZSRt16TcRnZzmh5aMhavwVHz3zBrSN8GfFMTQkzUnoBxC',
   alias: exports.XChainAlias,
   vm: exports.XChainVMName,
-  fee: 1000000
+  txFee: exports.MILLIAVAX,
+  creationTxFee: exports.CENTIAVAX
 };
 const n4P = {
   blockchainID: exports.PlatformChainID,
   alias: exports.PChainAlias,
   vm: exports.PChainVMName,
-  fee: 1000000,
+  txFee: exports.MILLIAVAX,
+  creationTxFee: exports.CENTIAVAX,
   minConsumption: 0.1,
   maxConsumption: 0.12,
   maxStakingDuration: new bn_js_1.default(31536000),
   maxSupply: new bn_js_1.default(720000000).mul(exports.ONEAVAX),
-  minStake: exports.ONEAVAX.mul(new bn_js_1.default(2000))
+  minStake: exports.ONEAVAX.mul(new bn_js_1.default(2000)),
+  minStakeDuration: 2 * 7 * 24 * 60 * 60,
+  maxStakeDuration: 365 * 24 * 60 * 60,
+  minDelegationStake: exports.ONEAVAX.mul(new bn_js_1.default(25)),
+  minDelegationFee: new bn_js_1.default(2)
 };
 const n4C = {
   blockchainID: 'saMG5YgNsFxzjz4NMkEkt3bAH6hVxWdZkWcEnGB3Z15pcAmsK',
   alias: exports.CChainAlias,
   vm: exports.CChainVMName,
-  fee: exports.GWEI.mul(new bn_js_1.default(470))
+  gasPrice: exports.GWEI.mul(new bn_js_1.default(470)),
+  chainID: 43110
+}; // TODO: UPDATE FOR FUJI
+
+const n5X = {
+  blockchainID: '2JVSBoinj9C2J33VntvzYtVJNZdN2NKiwwKjcumHUWEb5DbBrm',
+  alias: exports.XChainAlias,
+  vm: exports.XChainVMName,
+  txFee: exports.MILLIAVAX,
+  creationTxFee: exports.CENTIAVAX
+};
+const n5P = {
+  blockchainID: exports.PlatformChainID,
+  alias: exports.PChainAlias,
+  vm: exports.PChainVMName,
+  txFee: exports.MILLIAVAX,
+  creationTxFee: exports.CENTIAVAX,
+  minConsumption: 0.1,
+  maxConsumption: 0.12,
+  maxStakingDuration: new bn_js_1.default(31536000),
+  maxSupply: new bn_js_1.default(720000000).mul(exports.ONEAVAX),
+  minStake: exports.ONEAVAX,
+  minStakeDuration: 24 * 60 * 60,
+  maxStakeDuration: 365 * 24 * 60 * 60,
+  minDelegationStake: exports.ONEAVAX,
+  minDelegationFee: new bn_js_1.default(2)
+};
+const n5C = {
+  blockchainID: 'yH8D7ThNJkxmtkuv2jgBa4P1Rn3Qpr4pPr7QYNfcdoS6k6HWp',
+  alias: exports.CChainAlias,
+  vm: exports.CChainVMName,
+  txFee: exports.MILLIAVAX,
+  gasPrice: exports.GWEI.mul(new bn_js_1.default(470)),
+  chainID: 43113
 }; // END TODO
 
-const n12345X = Object.assign({}, n4X);
-n12345X.blockchainID = 'v4hFSZTNNVdyomeMoXa77dAz4CdxU3cziSb45TB7mfXUmy7C7';
-const n12345P = Object.assign({}, n4P);
+const n12345X = Object.assign({}, n5X);
+n12345X.blockchainID = '2eNy1mUFdmaxXNj1eQHUe7Np4gju9sJsEtWQ4MX3ToiNKuADed';
+const n12345P = Object.assign({}, n5P);
 n12345P.blockchainID = exports.PlatformChainID;
-const n12345C = Object.assign({}, n4C);
-n12345C.blockchainID = '2m6aMgMBJWsmT4Hv448n6sNAwGMFfugBvdU6PdY5oxZge4qb1W';
+const n12345C = Object.assign({}, n5C);
+n12345C.blockchainID = '26sSDdFXoKeShAqVfvugUiUQKhMZtHYDLeBqmBfNfcdjziTrZA';
+n12345C.chainID = 43111;
 
 class Defaults {}
 
 exports.Defaults = Defaults;
 Defaults.network = {
+  0: {
+    hrp: exports.NetworkIDToHRP[0],
+    X: n0X,
+    '2vrXWHgGxh5n3YsLHMV16YVVJTpT4z45Fmb4y3bL6si8kLCyg9': n0X,
+    P: n0P,
+    '11111111111111111111111111111111LpoYY': n0P,
+    C: n0C,
+    '2fFZQibQXcd6LTE4rpBPBAkLVXFE91Kit8pgxaBG1mRnh5xqbb': n0C
+  },
   1: {
     hrp: exports.NetworkIDToHRP[1],
     X: n1X,
-    '2VvmkRw4yrz8tPrVnCCbvEK1JxNyujpqhmU6SGonxMpkWBx9UD': n1X,
+    '2oYMBNV4eNHyqk2fjjV5nVQLDbtmNJzq5s3qs3Lo6ftnC6FByM': n1X,
     P: n1P,
     '11111111111111111111111111111111LpoYY': n1P,
     C: n1C,
-    '2mUYSXfLrDtigwbzj1LxKVsHwELghc5sisoXrzJwLqAAQHF4i': n1C
+    '2q9e4r6Mu3U68nU1fYjgbR6JvwrRx36CohpAX5UQxse55x1Q5': n1C
   },
   2: {
     hrp: exports.NetworkIDToHRP[2],
@@ -14220,14 +19448,23 @@ Defaults.network = {
     C: n4C,
     'saMG5YgNsFxzjz4NMkEkt3bAH6hVxWdZkWcEnGB3Z15pcAmsK': n4C
   },
+  5: {
+    hrp: exports.NetworkIDToHRP[5],
+    X: n5X,
+    '2JVSBoinj9C2J33VntvzYtVJNZdN2NKiwwKjcumHUWEb5DbBrm': n5X,
+    P: n5P,
+    '11111111111111111111111111111111LpoYY': n5P,
+    C: n5C,
+    'yH8D7ThNJkxmtkuv2jgBa4P1Rn3Qpr4pPr7QYNfcdoS6k6HWp': n5C
+  },
   12345: {
     hrp: exports.NetworkIDToHRP[12345],
     X: n12345X,
-    'v4hFSZTNNVdyomeMoXa77dAz4CdxU3cziSb45TB7mfXUmy7C7': n12345X,
+    '2eNy1mUFdmaxXNj1eQHUe7Np4gju9sJsEtWQ4MX3ToiNKuADed': n12345X,
     P: n12345P,
     '11111111111111111111111111111111LpoYY': n12345P,
     C: n12345C,
-    '2m6aMgMBJWsmT4Hv448n6sNAwGMFfugBvdU6PdY5oxZge4qb1W': n12345C
+    '26sSDdFXoKeShAqVfvugUiUQKhMZtHYDLeBqmBfNfcdjziTrZA': n12345C
   }
 };
 
@@ -14326,7 +19563,7 @@ var __importDefault = this && this.__importDefault || function (mod) {
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.NodeIDStringToBuffer = exports.bufferToNodeIDString = exports.privateKeyStringToBuffer = exports.bufferToPrivateKeyString = exports.UnixNow = exports.getPreferredHRP = void 0;
+exports.NodeIDStringToBuffer = exports.bufferToNodeIDString = exports.privateKeyStringToBuffer = exports.bufferToPrivateKeyString = exports.UnixNow = exports.MaxWeightFormula = exports.getPreferredHRP = void 0;
 
 const constants_1 = __webpack_require__(/*! ./constants */ "./node_modules/avalanche/dist/utils/constants.js");
 
@@ -14344,13 +19581,19 @@ function getPreferredHRP(networkID = undefined) {
   if (networkID in constants_1.NetworkIDToHRP) {
     return constants_1.NetworkIDToHRP[networkID];
   } else if (typeof networkID === "undefined") {
-    return constants_1.DefaultNetworkID;
+    return constants_1.NetworkIDToHRP[constants_1.DefaultNetworkID];
   }
 
   return constants_1.FallbackHRP;
 }
 
 exports.getPreferredHRP = getPreferredHRP;
+
+function MaxWeightFormula(staked, cap) {
+  return bn_js_1.default.min(staked.mul(new bn_js_1.default(5)), cap);
+}
+
+exports.MaxWeightFormula = MaxWeightFormula;
 /**
  * Function providing the current UNIX time using a {@link https://github.com/indutny/bn.js/|BN}.
  */
@@ -14379,7 +19622,7 @@ exports.bufferToPrivateKeyString = bufferToPrivateKeyString;
 
 function privateKeyStringToBuffer(pk) {
   if (!pk.startsWith("PrivateKey-")) {
-    throw new Error("privateKeyStringToBuffer -- private keys must start with 'PrivateKey-'");
+    throw new Error("Error - privateKeyStringToBuffer: private keys must start with 'PrivateKey-'");
   }
 
   let pksplit = pk.split("-");
@@ -14406,7 +19649,7 @@ exports.bufferToNodeIDString = bufferToNodeIDString;
 
 function NodeIDStringToBuffer(pk) {
   if (!pk.startsWith("NodeID-")) {
-    throw new Error("privateNodeIDToBuffer -- nodeID must start with 'NodeID-'");
+    throw new Error("Error - privateNodeIDToBuffer: nodeID must start with 'NodeID-'");
   }
 
   let pksplit = pk.split("-");
@@ -14461,6 +19704,8 @@ __exportStar(__webpack_require__(/*! ./helperfunctions */ "./node_modules/avalan
 __exportStar(__webpack_require__(/*! ./payload */ "./node_modules/avalanche/dist/utils/payload.js"), exports);
 
 __exportStar(__webpack_require__(/*! ./persistenceoptions */ "./node_modules/avalanche/dist/utils/persistenceoptions.js"), exports);
+
+__exportStar(__webpack_require__(/*! ./serialization */ "./node_modules/avalanche/dist/utils/serialization.js"), exports);
 
 /***/ }),
 
@@ -15396,39 +20641,39 @@ exports.PersistanceOptions = void 0;
 
 class PersistanceOptions {
   /**
-     *
-     * @param name The namespace of the database the data
-     * @param overwrite True if the data should be completey overwritten
-     * @param MergeRule The type of process used to merge with existing data: "intersection", "differenceSelf", "differenceNew", "symDifference", "union", "unionMinusNew", "unionMinusSelf"
-     *
-     * @remarks
-     * The merge rules are as follows:
-     *   * "intersection" - the intersection of the set
-     *   * "differenceSelf" - the difference between the existing data and new set
-     *   * "differenceNew" - the difference between the new data and the existing set
-     *   * "symDifference" - the union of the differences between both sets of data
-     *   * "union" - the unique set of all elements contained in both sets
-     *   * "unionMinusNew" - the unique set of all elements contained in both sets, excluding values only found in the new set
-     *   * "unionMinusSelf" - the unique set of all elements contained in both sets, excluding values only found in the existing set
-     */
+   *
+   * @param name The namespace of the database the data
+   * @param overwrite True if the data should be completey overwritten
+   * @param MergeRule The type of process used to merge with existing data: "intersection", "differenceSelf", "differenceNew", "symDifference", "union", "unionMinusNew", "unionMinusSelf"
+   *
+   * @remarks
+   * The merge rules are as follows:
+   *   * "intersection" - the intersection of the set
+   *   * "differenceSelf" - the difference between the existing data and new set
+   *   * "differenceNew" - the difference between the new data and the existing set
+   *   * "symDifference" - the union of the differences between both sets of data
+   *   * "union" - the unique set of all elements contained in both sets
+   *   * "unionMinusNew" - the unique set of all elements contained in both sets, excluding values only found in the new set
+   *   * "unionMinusSelf" - the unique set of all elements contained in both sets, excluding values only found in the existing set
+   */
   constructor(name, overwrite = false, mergeRule) {
     this.name = undefined;
     this.overwrite = false;
     this.mergeRule = 'union';
     /**
-       * Returns the namespace of the instance
-       */
+     * Returns the namespace of the instance
+     */
 
     this.getName = () => this.name;
     /**
-       * Returns the overwrite rule of the instance
-       */
+     * Returns the overwrite rule of the instance
+     */
 
 
     this.getOverwrite = () => this.overwrite;
     /**
-       * Returns the [[MergeRule]] of the instance
-       */
+     * Returns the [[MergeRule]] of the instance
+     */
 
 
     this.getMergeRule = () => this.mergeRule;
@@ -15441,6 +20686,255 @@ class PersistanceOptions {
 }
 
 exports.PersistanceOptions = PersistanceOptions;
+
+/***/ }),
+
+/***/ "./node_modules/avalanche/dist/utils/serialization.js":
+/*!************************************************************!*\
+  !*** ./node_modules/avalanche/dist/utils/serialization.js ***!
+  \************************************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+
+
+var __importDefault = this && this.__importDefault || function (mod) {
+  return mod && mod.__esModule ? mod : {
+    "default": mod
+  };
+};
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.Serialization = exports.Serializable = exports.SERIALIZATIONVERSION = void 0;
+/**
+ * @packageDocumentation
+ * @module Utils-Serialization
+ */
+
+const bintools_1 = __importDefault(__webpack_require__(/*! ../utils/bintools */ "./node_modules/avalanche/dist/utils/bintools.js"));
+
+const bn_js_1 = __importDefault(__webpack_require__(/*! bn.js */ "./node_modules/avalanche/node_modules/bn.js/lib/bn.js"));
+
+const buffer_1 = __webpack_require__(/*! buffer/ */ "./node_modules/node-libs-browser/node_modules/buffer/index.js");
+
+const helperfunctions_1 = __webpack_require__(/*! ./helperfunctions */ "./node_modules/avalanche/dist/utils/helperfunctions.js");
+
+exports.SERIALIZATIONVERSION = 0;
+
+class Serializable {
+  constructor() {
+    this._typeName = undefined;
+    this._typeID = undefined;
+  }
+  /**
+   * Used in serialization. TypeName is a string name for the type of object being output.
+   */
+
+
+  getTypeName() {
+    return this._typeName;
+  }
+  /**
+   * Used in serialization. Optional. TypeID is a number for the typeID of object being output.
+   */
+
+
+  getTypeID() {
+    return this._typeID;
+  } //sometimes the parent class manages the fields
+  //these are so you can say super.serialize(encoding); 
+
+
+  serialize(encoding) {
+    return {
+      "_typeName": this._typeName,
+      "_typeID": typeof this._typeID === "undefined" ? null : this._typeID
+    };
+  }
+
+  deserialize(fields, encoding) {
+    if (typeof fields["_typeName"] !== "string") {
+      throw new Error("Error - Serializable.deserialize: _typeName must be a string, found: " + typeof fields["_typeName"]);
+    }
+
+    if (fields["_typeName"] !== this._typeName) {
+      throw new Error("Error - Serializable.deserialize: _typeName mismatch -- expected: " + this._typeName + " -- recieved: " + fields["_typeName"]);
+    }
+
+    if (typeof fields["_typeID"] !== "undefined" && fields["_typeID"] !== null) {
+      if (typeof fields["_typeID"] !== "number") {
+        throw new Error("Error - Serializable.deserialize: _typeID must be a number, found: " + typeof fields["_typeID"]);
+      }
+
+      if (fields["_typeID"] !== this._typeID) {
+        throw new Error("Error - Serializable.deserialize: _typeID mismatch -- expected: " + this._typeID + " -- recieved: " + fields["_typeID"]);
+      }
+    }
+  }
+
+}
+
+exports.Serializable = Serializable;
+
+class Serialization {
+  constructor() {
+    this.bintools = bintools_1.default.getInstance();
+  }
+  /**
+   * Retrieves the Serialization singleton.
+   */
+
+
+  static getInstance() {
+    if (!Serialization.instance) {
+      Serialization.instance = new Serialization();
+    }
+
+    return Serialization.instance;
+  }
+
+  bufferToType(vb, type, ...args) {
+    if (type === "BN") {
+      return new bn_js_1.default(vb.toString("hex"), "hex");
+    } else if (type === "Buffer") {
+      if (args.length == 1 && typeof args[0] === "number") {
+        vb = buffer_1.Buffer.from(vb.toString("hex").padStart(args[0] * 2, '0'), "hex");
+      }
+
+      return vb;
+    } else if (type === "bech32") {
+      return this.bintools.addressToString(args[0], args[1], vb);
+    } else if (type === "nodeID") {
+      return helperfunctions_1.bufferToNodeIDString(vb);
+    } else if (type === "privateKey") {
+      return helperfunctions_1.bufferToPrivateKeyString(vb);
+    } else if (type === "cb58") {
+      return this.bintools.cb58Encode(vb);
+    } else if (type === "base58") {
+      return this.bintools.bufferToB58(vb);
+    } else if (type === "base64") {
+      return vb.toString("base64");
+    } else if (type === "hex") {
+      return vb.toString("hex");
+    } else if (type === "decimalString") {
+      return new bn_js_1.default(vb.toString("hex"), "hex").toString(10);
+    } else if (type === "number") {
+      return new bn_js_1.default(vb.toString("hex"), "hex").toNumber();
+    } else if (type === "utf8") {
+      return vb.toString("utf8");
+    }
+
+    return undefined;
+  }
+
+  typeToBuffer(v, type, ...args) {
+    if (type === "BN") {
+      let str = v.toString("hex");
+
+      if (args.length == 1 && typeof args[0] === "number") {
+        return buffer_1.Buffer.from(str.padStart(args[0] * 2, '0'), 'hex');
+      }
+
+      return buffer_1.Buffer.from(str, 'hex');
+    } else if (type === "Buffer") {
+      return v;
+    } else if (type === "bech32") {
+      return this.bintools.stringToAddress(v);
+    } else if (type === "nodeID") {
+      return helperfunctions_1.NodeIDStringToBuffer(v);
+    } else if (type === "privateKey") {
+      return helperfunctions_1.privateKeyStringToBuffer(v);
+    } else if (type === "cb58") {
+      return this.bintools.cb58Decode(v);
+    } else if (type === "base58") {
+      return this.bintools.b58ToBuffer(v);
+    } else if (type === "base64") {
+      return buffer_1.Buffer.from(v, "base64");
+    } else if (type === "hex") {
+      if (v.startsWith("0x")) {
+        v = v.slice(2);
+      }
+
+      return buffer_1.Buffer.from(v, "hex");
+    } else if (type === "decimalString") {
+      let str = new bn_js_1.default(v, 10).toString("hex");
+
+      if (args.length == 1 && typeof args[0] === "number") {
+        return buffer_1.Buffer.from(str.padStart(args[0] * 2, '0'), 'hex');
+      }
+
+      return buffer_1.Buffer.from(str, 'hex');
+    } else if (type === "number") {
+      let str = new bn_js_1.default(v, 10).toString("hex");
+
+      if (args.length == 1 && typeof args[0] === "number") {
+        return buffer_1.Buffer.from(str.padStart(args[0] * 2, '0'), 'hex');
+      }
+
+      return buffer_1.Buffer.from(str, 'hex');
+    } else if (type === "utf8") {
+      if (args.length == 1 && typeof args[0] === "number") {
+        let b = buffer_1.Buffer.alloc(args[0]);
+        b.write(v);
+        return b;
+      }
+
+      return buffer_1.Buffer.from(v, 'utf8');
+    }
+
+    return undefined;
+  }
+
+  encoder(value, encoding, intype, outtype, ...args) {
+    if (typeof value === "undefined") {
+      throw new Error("Error - Serializable.encoder: value passed is undefined");
+    }
+
+    if (encoding !== "display") {
+      outtype = encoding;
+    }
+
+    let vb = this.typeToBuffer(value, intype, ...args);
+    return this.bufferToType(vb, outtype, ...args);
+  }
+
+  decoder(value, encoding, intype, outtype, ...args) {
+    if (typeof value === "undefined") {
+      throw new Error("Error - Serializable.decoder: value passed is undefined");
+    }
+
+    if (encoding !== "display") {
+      intype = encoding;
+    }
+
+    let vb = this.typeToBuffer(value, intype, ...args);
+    return this.bufferToType(vb, outtype, ...args);
+  }
+
+  serialize(serialize, vm, encoding = "display", notes = undefined) {
+    if (typeof notes === "undefined") {
+      notes = serialize.getTypeName();
+    }
+
+    return {
+      vm,
+      encoding,
+      version: exports.SERIALIZATIONVERSION,
+      notes,
+      fields: serialize.serialize(encoding)
+    };
+  }
+
+  deserialize(input, output) {
+    output.deserialize(input["fields"], input["encoding"]);
+  }
+
+}
+
+exports.Serialization = Serialization;
 
 /***/ }),
 
@@ -23695,7 +29189,11 @@ var __WEBPACK_AMD_DEFINE_RESULT__;;
   var Buffer;
 
   try {
-    Buffer = __webpack_require__(/*! buffer */ 5).Buffer;
+    if (typeof window !== 'undefined' && typeof window.Buffer !== 'undefined') {
+      Buffer = window.Buffer;
+    } else {
+      Buffer = __webpack_require__(/*! buffer */ 5).Buffer;
+    }
   } catch (e) {}
 
   BN.isBN = function isBN(num) {
@@ -23735,22 +29233,20 @@ var __WEBPACK_AMD_DEFINE_RESULT__;;
 
     if (number[0] === '-') {
       start++;
-    }
-
-    if (base === 16) {
-      this._parseHex(number, start);
-    } else {
-      this._parseBase(number, base, start);
-    }
-
-    if (number[0] === '-') {
       this.negative = 1;
     }
 
-    this.strip();
-    if (endian !== 'le') return;
+    if (start < number.length) {
+      if (base === 16) {
+        this._parseHex(number, start, endian);
+      } else {
+        this._parseBase(number, base, start);
 
-    this._initArray(this.toArray(), base, endian);
+        if (endian === 'le') {
+          this._initArray(this.toArray(), base, endian);
+        }
+      }
+    }
   };
 
   BN.prototype._initNumber = function _initNumber(number, base, endian) {
@@ -23826,56 +29322,70 @@ var __WEBPACK_AMD_DEFINE_RESULT__;;
     return this.strip();
   };
 
-  function parseHex(str, start, end) {
-    var r = 0;
-    var len = Math.min(str.length, end);
+  function parseHex4Bits(string, index) {
+    var c = string.charCodeAt(index); // 'A' - 'F'
 
-    for (var i = start; i < len; i++) {
-      var c = str.charCodeAt(i) - 48;
-      r <<= 4; // 'a' - 'f'
+    if (c >= 65 && c <= 70) {
+      return c - 55; // 'a' - 'f'
+    } else if (c >= 97 && c <= 102) {
+      return c - 87; // '0' - '9'
+    } else {
+      return c - 48 & 0xf;
+    }
+  }
 
-      if (c >= 49 && c <= 54) {
-        r |= c - 49 + 0xa; // 'A' - 'F'
-      } else if (c >= 17 && c <= 22) {
-        r |= c - 17 + 0xa; // '0' - '9'
-      } else {
-        r |= c & 0xf;
-      }
+  function parseHexByte(string, lowerBound, index) {
+    var r = parseHex4Bits(string, index);
+
+    if (index - 1 >= lowerBound) {
+      r |= parseHex4Bits(string, index - 1) << 4;
     }
 
     return r;
   }
 
-  BN.prototype._parseHex = function _parseHex(number, start) {
+  BN.prototype._parseHex = function _parseHex(number, start, endian) {
     // Create possibly bigger array to ensure that it fits the number
     this.length = Math.ceil((number.length - start) / 6);
     this.words = new Array(this.length);
 
     for (var i = 0; i < this.length; i++) {
       this.words[i] = 0;
-    }
+    } // 24-bits chunks
 
-    var j, w; // Scan 24-bit chunks and add them to the number
 
     var off = 0;
+    var j = 0;
+    var w;
 
-    for (i = number.length - 6, j = 0; i >= start; i -= 6) {
-      w = parseHex(number, i, i + 6);
-      this.words[j] |= w << off & 0x3ffffff; // NOTE: `0x3fffff` is intentional here, 26bits max shift + 24bit hex limb
+    if (endian === 'be') {
+      for (i = number.length - 1; i >= start; i -= 2) {
+        w = parseHexByte(number, start, i) << off;
+        this.words[j] |= w & 0x3ffffff;
 
-      this.words[j + 1] |= w >>> 26 - off & 0x3fffff;
-      off += 24;
-
-      if (off >= 26) {
-        off -= 26;
-        j++;
+        if (off >= 18) {
+          off -= 18;
+          j += 1;
+          this.words[j] |= w >>> 26;
+        } else {
+          off += 8;
+        }
       }
-    }
+    } else {
+      var parseLength = number.length - start;
 
-    if (i + 6 !== start) {
-      w = parseHex(number, start, i + 6);
-      this.words[j] |= w << off & 0x3ffffff;
-      this.words[j + 1] |= w >>> 26 - off & 0x3fffff;
+      for (i = parseLength % 2 === 0 ? start + 1 : start; i < number.length; i += 2) {
+        w = parseHexByte(number, start, i) << off;
+        this.words[j] |= w & 0x3ffffff;
+
+        if (off >= 18) {
+          off -= 18;
+          j += 1;
+          this.words[j] |= w >>> 26;
+        } else {
+          off += 8;
+        }
+      }
     }
 
     this.strip();
@@ -23944,6 +29454,8 @@ var __WEBPACK_AMD_DEFINE_RESULT__;;
         this._iaddn(word);
       }
     }
+
+    this.strip();
   };
 
   BN.prototype.copy = function copy(dest) {
@@ -27556,11 +33068,13 @@ BaseCurve.prototype._fixedNafMul = function _fixedNafMul(p, k) {
   I /= 3; // Translate into more windowed form
 
   var repr = [];
+  var j;
+  var nafW;
 
-  for (var j = 0; j < naf.length; j += doubles.step) {
-    var nafW = 0;
+  for (j = 0; j < naf.length; j += doubles.step) {
+    nafW = 0;
 
-    for (var k = j + doubles.step - 1; k >= j; k--) nafW = (nafW << 1) + naf[k];
+    for (var l = j + doubles.step - 1; l >= j; l--) nafW = (nafW << 1) + naf[l];
 
     repr.push(nafW);
   }
@@ -27569,8 +33083,8 @@ BaseCurve.prototype._fixedNafMul = function _fixedNafMul(p, k) {
   var b = this.jpoint(null, null, null);
 
   for (var i = I; i > 0; i--) {
-    for (var j = 0; j < repr.length; j++) {
-      var nafW = repr[j];
+    for (j = 0; j < repr.length; j++) {
+      nafW = repr[j];
       if (nafW === i) b = b.mixedAdd(doubles.points[j]);else if (nafW === -i) b = b.mixedAdd(doubles.points[j].neg());
     }
 
@@ -27594,10 +33108,10 @@ BaseCurve.prototype._wnafMul = function _wnafMul(p, k) {
 
   for (var i = naf.length - 1; i >= 0; i--) {
     // Count zeroes
-    for (var k = 0; i >= 0 && naf[i] === 0; i--) k++;
+    for (var l = 0; i >= 0 && naf[i] === 0; i--) l++;
 
-    if (i >= 0) k++;
-    acc = acc.dblp(k);
+    if (i >= 0) l++;
+    acc = acc.dblp(l);
     if (i < 0) break;
     var z = naf[i];
     assert(z !== 0);
@@ -27620,9 +33134,12 @@ BaseCurve.prototype._wnafMulAdd = function _wnafMulAdd(defW, points, coeffs, len
   var naf = this._wnafT3; // Fill all arrays
 
   var max = 0;
+  var i;
+  var j;
+  var p;
 
-  for (var i = 0; i < len; i++) {
-    var p = points[i];
+  for (i = 0; i < len; i++) {
+    p = points[i];
 
     var nafPoints = p._getNAFPoints(defW);
 
@@ -27631,7 +33148,7 @@ BaseCurve.prototype._wnafMulAdd = function _wnafMulAdd(defW, points, coeffs, len
   } // Comb small window NAFs
 
 
-  for (var i = len - 1; i >= 1; i -= 2) {
+  for (i = len - 1; i >= 1; i -= 2) {
     var a = i - 1;
     var b = i;
 
@@ -27688,7 +33205,7 @@ BaseCurve.prototype._wnafMulAdd = function _wnafMulAdd(defW, points, coeffs, len
     naf[a] = new Array(max);
     naf[b] = new Array(max);
 
-    for (var j = 0; j < max; j++) {
+    for (j = 0; j < max; j++) {
       var ja = jsf[0][j] | 0;
       var jb = jsf[1][j] | 0;
       naf[a][j] = index[(ja + 1) * 3 + (jb + 1)];
@@ -27700,13 +33217,13 @@ BaseCurve.prototype._wnafMulAdd = function _wnafMulAdd(defW, points, coeffs, len
   var acc = this.jpoint(null, null, null);
   var tmp = this._wnafT4;
 
-  for (var i = max; i >= 0; i--) {
+  for (i = max; i >= 0; i--) {
     var k = 0;
 
     while (i >= 0) {
       var zero = true;
 
-      for (var j = 0; j < len; j++) {
+      for (j = 0; j < len; j++) {
         tmp[j] = naf[j][i] | 0;
         if (tmp[j] !== 0) zero = false;
       }
@@ -27720,16 +33237,16 @@ BaseCurve.prototype._wnafMulAdd = function _wnafMulAdd(defW, points, coeffs, len
     acc = acc.dblp(k);
     if (i < 0) break;
 
-    for (var j = 0; j < len; j++) {
+    for (j = 0; j < len; j++) {
       var z = tmp[j];
-      var p;
+      p;
       if (z === 0) continue;else if (z > 0) p = wnd[j][z - 1 >> 1];else if (z < 0) p = wnd[j][-z - 1 >> 1].neg();
       if (p.type === 'affine') acc = acc.mixedAdd(p);else acc = acc.add(p);
     }
   } // Zeroify references
 
 
-  for (var i = 0; i < len; i++) wnd[i] = null;
+  for (i = 0; i < len; i++) wnd[i] = null;
 
   if (jacobianResult) return acc;else return acc.toP();
 };
@@ -28043,11 +33560,13 @@ Point.prototype._projDbl = function _projDbl() {
   var nx;
   var ny;
   var nz;
+  var e;
+  var h;
+  var j;
 
   if (this.curve.twisted) {
     // E = a * C
-    var e = this.curve._mulA(c); // F = E + D
-
+    e = this.curve._mulA(c); // F = E + D
 
     var f = e.redAdd(d);
 
@@ -28060,9 +33579,9 @@ Point.prototype._projDbl = function _projDbl() {
       nz = f.redSqr().redSub(f).redSub(f);
     } else {
       // H = Z1^2
-      var h = this.z.redSqr(); // J = F - 2 * H
+      h = this.z.redSqr(); // J = F - 2 * H
 
-      var j = f.redSub(h).redISub(h); // X3 = (B-C-D)*J
+      j = f.redSub(h).redISub(h); // X3 = (B-C-D)*J
 
       nx = b.redSub(c).redISub(d).redMul(j); // Y3 = F * (E - D)
 
@@ -28072,12 +33591,11 @@ Point.prototype._projDbl = function _projDbl() {
     }
   } else {
     // E = C + D
-    var e = c.redAdd(d); // H = (c * Z1)^2
+    e = c.redAdd(d); // H = (c * Z1)^2
 
-    var h = this.curve._mulC(this.z).redSqr(); // J = E - 2 * H
+    h = this.curve._mulC(this.z).redSqr(); // J = E - 2 * H
 
-
-    var j = e.redSub(h).redSub(h); // X3 = c * (B - E) * J
+    j = e.redSub(h).redSub(h); // X3 = c * (B - E) * J
 
     nx = this.curve._mulC(b.redISub(e)).redMul(j); // Y3 = c * E * (C - D)
 
@@ -28996,11 +34514,12 @@ JPoint.prototype.dblp = function dblp(pow) {
   if (pow === 0) return this;
   if (this.isInfinity()) return this;
   if (!pow) return this.dbl();
+  var i;
 
   if (this.curve.zeroA || this.curve.threeA) {
     var r = this;
 
-    for (var i = 0; i < pow; i++) r = r.dbl();
+    for (i = 0; i < pow; i++) r = r.dbl();
 
     return r;
   } // 1M + 2S + 1A + N * (4S + 5M + 8A)
@@ -29016,7 +34535,7 @@ JPoint.prototype.dblp = function dblp(pow) {
 
   var jyd = jy.redAdd(jy);
 
-  for (var i = 0; i < pow; i++) {
+  for (i = 0; i < pow; i++) {
     var jx2 = jx.redSqr();
     var jyd2 = jyd.redSqr();
     var jyd4 = jyd2.redSqr();
@@ -29473,7 +34992,7 @@ function EC(options) {
   if (!(this instanceof EC)) return new EC(options); // Shortcut `elliptic.ec(curve-name)`
 
   if (typeof options === 'string') {
-    assert(curves.hasOwnProperty(options), 'Unknown curve ' + options);
+    assert(Object.prototype.hasOwnProperty.call(curves, options), 'Unknown curve ' + options);
     options = curves[options];
   } // Shortcut for `elliptic.ec(elliptic.curves.curveName)`
 
@@ -29520,15 +35039,15 @@ EC.prototype.genKeyPair = function genKeyPair(options) {
   var bytes = this.n.byteLength();
   var ns2 = this.n.sub(new BN(2));
 
-  do {
+  for (;;) {
     var priv = new BN(drbg.generate(bytes));
     if (priv.cmp(ns2) > 0) continue;
     priv.iaddn(1);
     return this.keyFromPrivate(priv);
-  } while (true);
+  }
 };
 
-EC.prototype._truncateToN = function truncateToN(msg, truncOnly) {
+EC.prototype._truncateToN = function _truncateToN(msg, truncOnly) {
   var delta = msg.byteLength() * 8 - this.n.bitLength();
   if (delta > 0) msg = msg.ushrn(delta);
   if (!truncOnly && msg.cmp(this.n) >= 0) return msg.sub(this.n);else return msg;
@@ -29559,7 +35078,7 @@ EC.prototype.sign = function sign(msg, key, enc, options) {
 
   var ns1 = this.n.sub(new BN(1));
 
-  for (var iter = 0; true; iter++) {
+  for (var iter = 0;; iter++) {
     var k = options.k ? options.k(iter) : new BN(drbg.generate(this.n.byteLength()));
     k = this._truncateToN(k, true);
     if (k.cmpn(1) <= 0 || k.cmp(ns1) >= 0) continue;
@@ -29599,16 +35118,17 @@ EC.prototype.verify = function verify(msg, signature, key, enc) {
   var sinv = s.invm(this.n);
   var u1 = sinv.mul(msg).umod(this.n);
   var u2 = sinv.mul(r).umod(this.n);
+  var p;
 
   if (!this.curve._maxwellTrick) {
-    var p = this.g.mulAdd(u1, key.getPublic(), u2);
+    p = this.g.mulAdd(u1, key.getPublic(), u2);
     if (p.isInfinity()) return false;
     return p.getX().umod(this.n).cmp(r) === 0;
   } // NOTE: Greg Maxwell's trick, inspired by:
   // https://git.io/vad3K
 
 
-  var p = this.g.jmulAdd(u1, key.getPublic(), u2);
+  p = this.g.jmulAdd(u1, key.getPublic(), u2);
   if (p.isInfinity()) return false; // Compare `p.x` of Jacobian point with `r`,
   // this will do `p.x == r * p.z^2` instead of multiplying `p.x` by the
   // inverse of `p.z^2`
@@ -29764,6 +35284,10 @@ KeyPair.prototype._importPublic = function _importPublic(key, enc) {
 
 
 KeyPair.prototype.derive = function derive(pub) {
+  if (!pub.validate()) {
+    assert(pub.validate(), 'public point not validated');
+  }
+
   return pub.mul(this.priv).getX();
 }; // ECDSA
 
@@ -29999,7 +35523,7 @@ var Signature = __webpack_require__(/*! ./signature */ "./node_modules/elliptic/
 function EDDSA(curve) {
   assert(curve === 'ed25519', 'only tested with ed25519 so far');
   if (!(this instanceof EDDSA)) return new EDDSA(curve);
-  var curve = curves[curve].curve;
+  curve = curves[curve].curve;
   this.curve = curve;
   this.g = curve.g;
   this.g.precompute(curve.n.bitLength() + 1);
@@ -30349,6 +35873,7 @@ function getJSF(k1, k2) {
   k2 = k2.clone();
   var d1 = 0;
   var d2 = 0;
+  var m8;
 
   while (k1.cmpn(-d1) > 0 || k2.cmpn(-d2) > 0) {
     // First phase
@@ -30361,7 +35886,7 @@ function getJSF(k1, k2) {
     if ((m14 & 1) === 0) {
       u1 = 0;
     } else {
-      var m8 = k1.andln(7) + d1 & 7;
+      m8 = k1.andln(7) + d1 & 7;
       if ((m8 === 3 || m8 === 5) && m24 === 2) u1 = -m14;else u1 = m14;
     }
 
@@ -30371,7 +35896,7 @@ function getJSF(k1, k2) {
     if ((m24 & 1) === 0) {
       u2 = 0;
     } else {
-      var m8 = k2.andln(7) + d2 & 7;
+      m8 = k2.andln(7) + d2 & 7;
       if ((m8 === 3 || m8 === 5) && m14 === 2) u2 = -m24;else u2 = m24;
     }
 
@@ -30419,7 +35944,7 @@ utils.intFromLE = intFromLE;
 /*! exports provided: name, version, description, main, files, scripts, repository, keywords, author, license, bugs, homepage, devDependencies, dependencies, default */
 /***/ (function(module) {
 
-module.exports = JSON.parse("{\"name\":\"elliptic\",\"version\":\"6.5.3\",\"description\":\"EC cryptography\",\"main\":\"lib/elliptic.js\",\"files\":[\"lib\"],\"scripts\":{\"jscs\":\"jscs benchmarks/*.js lib/*.js lib/**/*.js lib/**/**/*.js test/index.js\",\"jshint\":\"jscs benchmarks/*.js lib/*.js lib/**/*.js lib/**/**/*.js test/index.js\",\"lint\":\"npm run jscs && npm run jshint\",\"unit\":\"istanbul test _mocha --reporter=spec test/index.js\",\"test\":\"npm run lint && npm run unit\",\"version\":\"grunt dist && git add dist/\"},\"repository\":{\"type\":\"git\",\"url\":\"git@github.com:indutny/elliptic\"},\"keywords\":[\"EC\",\"Elliptic\",\"curve\",\"Cryptography\"],\"author\":\"Fedor Indutny <fedor@indutny.com>\",\"license\":\"MIT\",\"bugs\":{\"url\":\"https://github.com/indutny/elliptic/issues\"},\"homepage\":\"https://github.com/indutny/elliptic\",\"devDependencies\":{\"brfs\":\"^1.4.3\",\"coveralls\":\"^3.0.8\",\"grunt\":\"^1.0.4\",\"grunt-browserify\":\"^5.0.0\",\"grunt-cli\":\"^1.2.0\",\"grunt-contrib-connect\":\"^1.0.0\",\"grunt-contrib-copy\":\"^1.0.0\",\"grunt-contrib-uglify\":\"^1.0.1\",\"grunt-mocha-istanbul\":\"^3.0.1\",\"grunt-saucelabs\":\"^9.0.1\",\"istanbul\":\"^0.4.2\",\"jscs\":\"^3.0.7\",\"jshint\":\"^2.10.3\",\"mocha\":\"^6.2.2\"},\"dependencies\":{\"bn.js\":\"^4.4.0\",\"brorand\":\"^1.0.1\",\"hash.js\":\"^1.0.0\",\"hmac-drbg\":\"^1.0.0\",\"inherits\":\"^2.0.1\",\"minimalistic-assert\":\"^1.0.0\",\"minimalistic-crypto-utils\":\"^1.0.0\"}}");
+module.exports = JSON.parse("{\"name\":\"elliptic\",\"version\":\"6.5.4\",\"description\":\"EC cryptography\",\"main\":\"lib/elliptic.js\",\"files\":[\"lib\"],\"scripts\":{\"lint\":\"eslint lib test\",\"lint:fix\":\"npm run lint -- --fix\",\"unit\":\"istanbul test _mocha --reporter=spec test/index.js\",\"test\":\"npm run lint && npm run unit\",\"version\":\"grunt dist && git add dist/\"},\"repository\":{\"type\":\"git\",\"url\":\"git@github.com:indutny/elliptic\"},\"keywords\":[\"EC\",\"Elliptic\",\"curve\",\"Cryptography\"],\"author\":\"Fedor Indutny <fedor@indutny.com>\",\"license\":\"MIT\",\"bugs\":{\"url\":\"https://github.com/indutny/elliptic/issues\"},\"homepage\":\"https://github.com/indutny/elliptic\",\"devDependencies\":{\"brfs\":\"^2.0.2\",\"coveralls\":\"^3.1.0\",\"eslint\":\"^7.6.0\",\"grunt\":\"^1.2.1\",\"grunt-browserify\":\"^5.3.0\",\"grunt-cli\":\"^1.3.2\",\"grunt-contrib-connect\":\"^3.0.0\",\"grunt-contrib-copy\":\"^1.0.0\",\"grunt-contrib-uglify\":\"^5.0.0\",\"grunt-mocha-istanbul\":\"^5.0.2\",\"grunt-saucelabs\":\"^9.0.1\",\"istanbul\":\"^0.4.5\",\"mocha\":\"^8.0.1\"},\"dependencies\":{\"bn.js\":\"^4.11.9\",\"brorand\":\"^1.1.0\",\"hash.js\":\"^1.0.0\",\"hmac-drbg\":\"^1.0.1\",\"inherits\":\"^2.0.4\",\"minimalistic-assert\":\"^1.0.1\",\"minimalistic-crypto-utils\":\"^1.0.1\"}}");
 
 /***/ }),
 
@@ -41005,6 +46530,7 @@ module.exports = hoistNonReactStatics;
 /*! no static exports found */
 /***/ (function(module, exports) {
 
+/*! ieee754. BSD-3-Clause License. Feross Aboukhadijeh <https://feross.org/opensource> */
 exports.read = function (buffer, offset, isLE, mLen, nBytes) {
   var e, m;
   var eLen = nBytes * 8 - mLen - 1;
@@ -76660,7 +82186,7 @@ __webpack_require__.r(__webpack_exports__);
 
 const BIN_TOOLS = avalanche__WEBPACK_IMPORTED_MODULE_0__["BinTools"].getInstance();
 const AVA_EXPLORER_ROOT = 'https://explorer.avax.network';
-/* harmony default export */ __webpack_exports__["default"] = (new avalanche__WEBPACK_IMPORTED_MODULE_0__["Avalanche"]('testapi.avax.network', 443, 'https'));
+/* harmony default export */ __webpack_exports__["default"] = (new avalanche__WEBPACK_IMPORTED_MODULE_0__["Avalanche"]('api.avax.network', 443, 'https'));
 function explorerTxPage(txid) {
   return `${AVA_EXPLORER_ROOT}/tx/${txid}`;
 }
